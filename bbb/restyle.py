@@ -112,6 +112,7 @@ class Plan:
     notes: list
     tracks: list        # current structure for display: dicts with name/type/depth/color/solo/flags
     warnings: list = field(default_factory=list)  # dicts: categories (empty = any write), text
+    baseline: list = field(default_factory=list)  # integrity problems already in the original file
 
 
 def _helper(name):
@@ -326,7 +327,7 @@ def analyze(root):
     if 'Live 11' in creator or 'Live 10' in creator:
         warnings.append(dict(kind='live_version', categories=[], text=f'Saved by {creator}. The new version is unchanged in sound, '
                                                  'but saving it from Live 12 upgrades it for good.'))
-    return Plan(changes, notes, struct, warnings)
+    return Plan(changes, notes, struct, warnings, als.validate(root))
 
 
 def apply(root, plan, categories):
@@ -336,7 +337,8 @@ def apply(root, plan, categories):
         if c.category in categories:
             c.apply()
             done.append(c)
-    problems = als.validate(root)
+    # only problems the restyle introduced count; some sets saved by Live already have quirks
+    problems = [p for p in als.validate(root) if p not in plan.baseline]
     if problems:
         raise ValueError('validation failed: ' + '; '.join(problems))
     return done
@@ -346,18 +348,28 @@ VERSION = re.compile(r'^(.*?)(\d+)\.(\d+)(?!\d)')   # 'my song 2.5 (harmonics)' 
 
 
 def next_version_path(path):
-    """Next free version after the newest version of this song in its folder, e.g. 2.5 with 2.6
-    and 2.6 (restyle) present -> 2.7 (restyle)."""
+    """Next free version after the most recently saved version of this song in its folder.
+
+    Goes by save date, not by number: '3.41' may mean 3.4.1 (before 3.5) while '1.10' follows
+    1.9, so numbers alone are ambiguous. E.g. newest 3.7 -> 3.8 (restyle); numbers that already
+    exist are skipped.
+    """
     d, f = os.path.split(path)
     stem = f[:-4]
     m = VERSION.match(stem)
     if m:
         prefix = m.group(1)
-        versions = [(int(x.group(2)), int(x.group(3))) for x in
-                    (VERSION.match(os.path.basename(o)[:-4]) for o in os.listdir(d) if o.endswith('.als'))
-                    if x and x.group(1).lower() == prefix.lower()]
-        major, minor = max(versions)
-        base = f'{prefix}{major}.{minor + 1}'
+        versions = {}   # (major, minor) -> newest mtime among files with that version
+        for o in os.listdir(d):
+            x = VERSION.match(o[:-4]) if o.endswith('.als') else None
+            if x and x.group(1).lower() == prefix.lower():
+                v = (int(x.group(2)), int(x.group(3)))
+                versions[v] = max(versions.get(v, 0), os.path.getmtime(os.path.join(d, o)))
+        major, minor = max(versions, key=versions.get)
+        minor += 1
+        while (major, minor) in versions:
+            minor += 1
+        base = f'{prefix}{major}.{minor}'
     else:
         base = f'{stem} 1.1'
     out = os.path.join(d, base + ' (restyle).als')
