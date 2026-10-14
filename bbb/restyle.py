@@ -1,0 +1,286 @@
+"""Cosmetic restyle of an existing project, split into categories that can be switched on/off.
+
+Usage: python3 -m bbb.restyle <project.als> [--write] [--only cat1,cat2]
+
+Without --write it only prints what would change. With --write it saves the result as the
+next version next to the original (e.g. 'song 2.5 (x).als' -> 'song 2.6 (restyle).als');
+the original is never modified. Tracks, returns, devices, sends and clips are never added
+or removed; only the take-lane categories remove (empty or duplicate, unreferenced) lanes.
+"""
+import os
+import re
+import sys
+from dataclasses import dataclass, field
+from typing import Callable
+
+from . import als, spec
+
+# key: (title, on by default, description)
+CATEGORIES = {
+    'group_names': ('Group names', True, 'Top-level groups and helper tracks get their canonical name'),
+    'solo_keys': ('Solo hotkeys', True, 'Top-level groups get their solo key'),
+    'track_colors': ('Track colors', True, 'Every track in a group gets the group color'),
+    'clip_colors': ('Clip colors', True, 'Clips (arrangement, session, take lanes) get the group color'),
+    'order': ('Group order', True, 'Helpers, then groups in template order, then the rest'),
+    'auto_names': ('Auto names', True, "'17-Kontakt 7' becomes 'kontakt 7'"),
+    'rec_names': ("'rec' names", False, "'rec' / 'NN-Audio' becomes the name of its group"),
+    'returns': ('Returns', True, 'Return names and colors (never their order)'),
+    'empty_lanes': ('Empty take lanes', False, 'Remove take lanes without clips that nothing refers to'),
+    'dup_lanes': ('Duplicate take lanes', False,
+                  'Remove take lanes identical to an earlier lane (same or other track) that nothing refers to'),
+}
+
+AUTO_NAME = re.compile(r'^\d+-(.*)$')                  # Live's default 'NN-Device' names
+GENERIC = re.compile(r'^(rec|audio|midi|group)$', re.I)  # names that say nothing
+RETURN_ALIASES = {'amb': ['ambience', 'amb'], 'verb': ['long verb', 'verb', 'reverb'], 'delay': ['delay'],
+                  'drum par': ['dums par', 'drums par', 'drum par'], 'vox par': ['scheps', 'vox par']}
+
+
+@dataclass
+class Change:
+    category: str
+    track: str          # display path, e.g. '#61 VOX LEAD › Vox Chorus › rec'
+    track_id: str       # '' when not about one track
+    detail: str
+    apply: Callable = field(repr=False)
+
+
+@dataclass
+class Plan:
+    changes: list
+    notes: list
+    tracks: list        # current structure for display: dicts with name/type/depth/color/solo/flags
+
+
+def _helper(name):
+    for hname, hcol in spec.HELPERS:
+        if name.lower() == hname.lower():
+            return hname, hcol
+    return None
+
+
+def _group(name):
+    n = name.strip().lower()
+    if n in [x.lower() for x in spec.IGNORE_GROUPS]:
+        return None
+    for g in spec.GROUPS:
+        if n == g.name.lower() or n in g.aliases:
+            return g
+    return None
+
+
+def _return(name):
+    n = name.split('-', 1)[-1].strip().lower()
+    for rname, rcol in spec.RETURNS:
+        if n in RETURN_ALIASES[rname]:
+            return rname, rcol
+    return None
+
+
+def analyze(root):
+    tracks = als.tracks(root)
+    by_id = {t.get('Id'): t for t in tracks}
+    pos = {t.get('Id'): i + 1 for i, t in enumerate(tracks)}
+    changes, notes = [], []
+
+    def path(t):
+        parts = [als.name(t)]
+        g = als.group_id(t)
+        while g != '-1':
+            parts.append(als.name(by_id[g]))
+            g = als.group_id(by_id[g])
+        return f"#{pos[t.get('Id')]} " + ' › '.join(reversed(parts))
+
+    def add(cat, t, detail, fn):
+        changes.append(Change(cat, path(t), t.get('Id'), detail, fn))
+
+    def setter(fn, *args):
+        return lambda: fn(*args)
+
+    # --- top-level blocks -------------------------------------------------------
+    blocks = [als.subtree(root, t) if als.is_group(t) else [t]
+              for t in tracks if als.group_id(t) == '-1' and t.tag != 'ReturnTrack']
+    keyed = []
+    for i, block in enumerate(blocks):
+        top = block[0]
+        h = _helper(als.name(top))
+        g = _group(als.name(top)) if als.is_group(top) else None
+        if h:
+            if als.name(top) != h[0]:
+                add('group_names', top, f'→ {h[0]}', setter(als.set_name, top, h[0]))
+            if als.color(top) != h[1]:
+                add('track_colors', top, f'color {als.color(top)} → {h[1]}', setter(als.set_color, top, h[1]))
+            keyed.append(((0, [x[0] for x in spec.HELPERS].index(h[0])), i, block))
+            continue
+        if not g:
+            kind = 'group' if als.is_group(top) else 'track'
+            notes.append(f'Top-level {kind} “{als.name(top)}” is not in the template; left as is, placed after the groups.')
+            keyed.append(((2, 0), i, block))
+            continue
+        keyed.append(((1, spec.GROUPS.index(g)), i, block))
+        if als.name(top) != g.name:
+            add('group_names', top, f'→ {g.name}', setter(als.set_name, top, g.name))
+        if als.solo_key(top) != g.solo:
+            add('solo_keys', top, f'key {als.solo_key(top) or "none"} → {g.solo}', setter(als.set_solo_key, top, g.solo))
+        for t in block:
+            if als.color(t) != g.color:
+                add('track_colors', t, f'color {als.color(t)} → {g.color}', setter(als.set_color, t, g.color))
+            clips = [c for c in t.iter() if c.tag in als.CLIP_TAGS and als.val(c, 'Color') != str(g.color)]
+            if clips:
+                add('clip_colors', t, f'{len(clips)} clips → {g.color}',
+                    setter(lambda cs, col: [als.set_val(c, 'Color', col) for c in cs], clips, g.color))
+            if t is top:
+                continue
+            name, user = als.name(t), als.val(t, 'Name/UserName', '')
+            m = AUTO_NAME.match(name)
+            parent = als.name(by_id[als.group_id(t)])
+            if GENERIC.match(name) or (m and not user and GENERIC.match(m.group(1).split(' ')[0])):
+                add('rec_names', t, f'→ {parent.lower()}', setter(als.set_name, t, parent.lower()))
+            elif m and not user:
+                add('auto_names', t, f'→ {m.group(1).lower()}', setter(als.set_name, t, m.group(1).lower()))
+
+    seen = set()
+    for key, _, block in keyed:
+        n = als.name(block[0]).lower()
+        if key[0] == 1 and _group(n).name in seen:
+            notes.append(f'More than one top-level group maps to {_group(n).name}.')
+        if key[0] == 1:
+            seen.add(_group(n).name)
+
+    # --- order ------------------------------------------------------------------
+    keyed_sorted = sorted(keyed, key=lambda x: (x[0], x[1]))
+    if [b[0] for _, _, b in keyed_sorted] != [b[0] for _, _, b in keyed]:
+        new_tops = [b[0] for _, _, b in keyed_sorted]
+        order = [t for _, _, b in keyed_sorted for t in b] + [t for t in tracks if t.tag == 'ReturnTrack']
+
+        def reorder():
+            tel = als.tracks_el(root)
+            current = list(tel)
+            inner, last = current[0].tail, current[-1].tail
+            for t in current:
+                tel.remove(t)
+            for t in order:
+                tel.append(t)
+            als._retail(tel, inner, last)
+        changes.append(Change('order', 'top level', '', ' | '.join(als.name(t) for t in new_tops), reorder))
+
+    # --- returns ----------------------------------------------------------------
+    for t in tracks:
+        if t.tag != 'ReturnTrack':
+            continue
+        r = _return(als.name(t))
+        if r is None:
+            notes.append(f'Return “{als.name(t)}” is not in the template; left as is.')
+            continue
+        old = als.name(t)
+        letter = old.split('-', 1)[0] + '-' if '-' in old else ''
+        if als.val(t, 'Name/UserName') != r[0]:
+            def rn(t=t, n=r[0], eff=letter + r[0]):
+                als.set_val(t, 'Name/UserName', n)
+                als.set_val(t, 'Name/EffectiveName', eff)
+            add('returns', t, f'→ {letter}{r[0]}', rn)
+        if als.color(t) != r[1]:
+            add('returns', t, f'color {als.color(t)} → {r[1]}', setter(als.set_color, t, r[1]))
+
+    # --- take lanes -----------------------------------------------------------------
+    first_seen = {}   # lane fingerprint -> track path where it first occurs
+    for t in tracks:
+        inner, lanes = als.take_lanes(t)
+        if not lanes:
+            continue
+        events = als.arrangement_events(t)
+        referenced = {als.val(c, 'TakeId') for c in (events if events is not None else [])}
+        empty, dups = [], []
+        for lane in lanes:
+            clips = als.lane_clips(lane)
+            free = lane.get('Id') not in referenced
+            if not clips:
+                if free:
+                    empty.append(lane)
+                continue
+            fp = frozenset((als.clip_source(c), c.get('Time')) for c in clips)
+            if fp in first_seen and free:
+                dups.append((lane, first_seen[fp]))
+            first_seen.setdefault(fp, path(t))
+
+        def remove(inner=inner, gone=None):
+            tail = list(inner)[-1].tail
+            for lane in gone:
+                inner.remove(lane)
+            if len(inner):
+                inner[-1].tail = tail
+        if empty:
+            add('empty_lanes', t, f'{len(empty)} of {len(lanes)} lanes', setter(remove, inner, empty))
+        if dups:
+            where = sorted({w for _, w in dups})
+            add('dup_lanes', t, f'{len(dups)} of {len(lanes)} lanes, same as on: ' + '; '.join(where),
+                setter(remove, inner, [l for l, _ in dups]))
+
+    # --- structure for display ----------------------------------------------------------
+    flagged = {}
+    for c in changes:
+        flagged.setdefault(c.track_id, set()).add(c.category)
+    struct = []
+    for t in tracks:
+        _, lanes = als.take_lanes(t)
+        struct.append(dict(id=t.get('Id'), pos=pos[t.get('Id')], name=als.name(t), type=t.tag.replace('Track', ''),
+                           depth=path(t).count(' › '), color=als.color(t), solo=als.solo_key(t),
+                           lanes=len(lanes), flags=sorted(flagged.get(t.get('Id'), []))))
+    return Plan(changes, notes, struct)
+
+
+def apply(root, plan, categories):
+    """Apply the selected categories; order goes last because it rebuilds the track list."""
+    done = []
+    for c in sorted(plan.changes, key=lambda c: c.category == 'order'):
+        if c.category in categories:
+            c.apply()
+            done.append(c)
+    problems = als.validate(root)
+    if problems:
+        raise ValueError('validation failed: ' + '; '.join(problems))
+    return done
+
+
+def next_version_path(path):
+    d, f = os.path.split(path)
+    stem = f[:-4]
+    m = re.match(r'^(.*?)(\d+)\.(\d+)(.*)$', stem)
+    base = f'{m.group(1)}{m.group(2)}.{int(m.group(3)) + 1}' if m else f'{stem} 1.1'
+    out = os.path.join(d, base + ' (restyle).als')
+    n = 2
+    while os.path.exists(out):
+        out = os.path.join(d, f'{base} (restyle {n}).als')
+        n += 1
+    return out
+
+
+def restyle_file(path, categories):
+    """Load, apply the categories, save as the next version. Returns (out_path, applied changes)."""
+    root = als.load(path)
+    plan = analyze(root)
+    done = apply(root, plan, categories)
+    out = next_version_path(path)
+    als.save(root, out)
+    return out, done
+
+
+def main():
+    path = sys.argv[1]
+    cats = [k for k, (_, on, _) in CATEGORIES.items() if on]
+    if '--only' in sys.argv:
+        cats = sys.argv[sys.argv.index('--only') + 1].split(',')
+    root = als.load(path)
+    plan = analyze(root)
+    for c in plan.changes:
+        mark = '*' if c.category in cats else ' '
+        print(f'{mark} {c.category:12} {c.track}: {c.detail}')
+    for n in plan.notes:
+        print('  note', n)
+    if '--write' in sys.argv:
+        out, done = restyle_file(path, cats)
+        print(f'wrote {out} ({len(done)} changes)')
+
+
+if __name__ == '__main__':
+    main()

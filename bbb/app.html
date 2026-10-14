@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBB Restyle</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
+    --accent: #e8590c; --accent-ink: #ffffff; --ok: #2f9e44; --warn: #c27c0e; --chip: #efede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe7; --muted: #9b9a95; --line: #33332f;
+            --accent: #ff7a2e; --accent-ink: #161615; --chip: #2a2a27; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line);
+           background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; letter-spacing: .02em; }
+  select, input[type=text] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                             border-radius: 6px; padding: 6px 8px; }
+  #project { min-width: 260px; } #version { min-width: 260px; } #path { flex: 1; min-width: 240px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 60px); }
+  aside { border-right: 1px solid var(--line); padding: 16px; background: var(--panel); }
+  aside h2, section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  .toggle { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center;
+            padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .toggle .desc { grid-column: 2 / 4; color: var(--muted); font-size: 12px; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .count { font-variant-numeric: tabular-nums; font-size: 12px; background: var(--chip); border-radius: 10px; padding: 1px 8px; }
+  .count.zero { opacity: .45; }
+  .sep { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--warn); }
+  #writebox { margin-top: 18px; }
+  #writebox .next { color: var(--muted); font-size: 12px; margin: 6px 0 10px; word-break: break-all; }
+  .content { padding: 16px 24px; overflow: auto; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+  .tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
+  details.off { opacity: .55; }
+  summary { padding: 10px 14px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  summary .t { font-weight: 600; } summary .count { margin-left: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td { padding: 4px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.trk { color: var(--muted); width: 45%; }
+  .notes { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--warn);
+           border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+  .notes p { margin: 3px 0; }
+  .tree { display: grid; grid-template-columns: auto auto minmax(120px, 1fr) auto auto auto; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tree .row { display: contents; }
+  .tree .row > * { padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; align-self: stretch;
+                   display: flex; align-items: center; }
+  .tree .row > .sw { width: 14px; height: 14px; padding: 0; margin: 6px 4px; align-self: center; border-bottom: 1px solid rgba(0,0,0,.2); }
+  .tree .row.group { font-weight: 600; }
+  .tree .pos, .tree .lanes { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tree .lanes { justify-content: flex-end; }
+  .tree .nm { overflow: hidden; text-overflow: ellipsis; display: block !important; line-height: 22px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+  .key { font: 12px ui-monospace, Menlo, monospace; background: var(--chip); border-radius: 4px; padding: 0 6px; justify-self: start; }
+  .flags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .flag { font-size: 11px; border-radius: 4px; padding: 0 6px; background: var(--chip); color: var(--muted); }
+  .flag.on { background: var(--accent); color: var(--accent-ink); }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.err { color: #e03131; } .status.ok { color: var(--ok); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>BBB Restyle</h1>
+  <select id="project"><option>Loading projects…</option></select>
+  <select id="version"></select>
+  <input id="path" type="text" placeholder="…or paste the full path of an .als">
+  <button id="load" class="primary">Analyze</button>
+  <span id="status" class="status"></span>
+</header>
+<main>
+  <aside>
+    <h2>Restyle</h2>
+    <div id="toggles"><p class="status">Load a project to see what differs from the template.</p></div>
+    <div id="writebox" hidden>
+      <div class="next">Writes a new version next to the original:<br><b id="next"></b></div>
+      <button id="write" class="primary">Write new version</button>
+    </div>
+  </aside>
+  <div class="content">
+    <div class="tabs" id="tabs" hidden>
+      <button data-tab="findings" class="on">Differences</button>
+      <button data-tab="tree">Structure</button>
+    </div>
+    <div id="view"><div class="empty">No project loaded.</div></div>
+  </div>
+</main>
+<script>
+// Live's 70-color clip/track palette (approximate sRGB), indexed 0-69
+const PALETTE = ['FF94A6','FFA529','CC9927','F7F47C','BFFB00','1AFF2F','25FFA8','5CFFE8','8BC5FF','5480E4','92A7FF','D86CE4','E553A0','FFFFFF',
+  'FF3636','F66C03','99724B','FFF034','87FF67','3DC300','00BFAF','19E9FF','10A4EE','007DC0','886CE4','B677C6','FF39D4','D0D0D0',
+  'E2675A','FFA374','D3AD71','EDFFAE','D2E498','BAD074','9BC48D','D4FDE1','CDF1F8','B9C1E3','CDBBE4','AE98E5','E5DCE1','A9A9A9',
+  'C6928B','B78256','99836A','BFBA69','A6BE00','7DB04D','88C2BA','9BB3C4','85A5C2','8393CC','A595B5','BF9FBE','BC7196','7B7B7B',
+  'AF3333','A95131','724F41','DBC300','85961F','539F31','0A9C8E','236384','1A2F96','2F52A2','624BAD','A34BAD','CC2E6E','3C3C3C'];
+const DESTRUCTIVE = new Set(['empty_lanes', 'dup_lanes']);
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let projects = [], data = null, tab = 'findings', selected = new Set();
+
+function status(msg, cls = '') { const s = $('#status'); s.textContent = msg; s.className = 'status ' + cls; }
+async function api(url, body) {
+  const r = await fetch(url, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+async function init() {
+  projects = await api('/api/projects');
+  $('#project').innerHTML = projects.map((p, i) => `<option value="${i}">${esc(p.folder)} / ${esc(p.project)}</option>`).join('');
+  try { const last = localStorage.getItem('bbb.project'); if (last && projects[last]) $('#project').value = last; } catch (e) {}
+  fillVersions();
+}
+function fillVersions() {
+  const p = projects[$('#project').value];
+  $('#version').innerHTML = p.versions.map(v => `<option>${esc(v)}</option>`).join('');
+}
+function currentPath() {
+  const typed = $('#path').value.trim();
+  if (typed) return typed;
+  const p = projects[$('#project').value];
+  return p.dir + $('#version').value;
+}
+
+async function analyze() {
+  const path = currentPath();
+  $('#load').disabled = true; status('Reading ' + path.split('/').pop() + '…');
+  try { localStorage.setItem('bbb.project', $('#project').value); } catch (e) {}
+  try {
+    data = await api('/api/analyze', {path});
+    selected = new Set(data.categories.filter(c => c.default).map(c => c.key));
+    status(`${data.file} · ${data.live}`, '');
+    render();
+  } catch (e) { status(e.message, 'err'); }
+  $('#load').disabled = false;
+}
+
+function render() {
+  const cats = data.categories;
+  const toggle = c => `<label class="toggle">
+      <input type="checkbox" data-cat="${c.key}" ${selected.has(c.key) ? 'checked' : ''} ${c.items.length ? '' : 'disabled'}>
+      <span>${esc(c.title)}</span><span class="count ${c.items.length ? '' : 'zero'}">${c.items.length}</span>
+      <span class="desc">${esc(c.description)}</span></label>`;
+  $('#toggles').innerHTML = cats.filter(c => !DESTRUCTIVE.has(c.key)).map(toggle).join('')
+    + '<div class="sep">Cleanup — removes take lanes</div>'
+    + cats.filter(c => DESTRUCTIVE.has(c.key)).map(toggle).join('');
+  $('#toggles').querySelectorAll('input').forEach(i => i.onchange = () => {
+    i.checked ? selected.add(i.dataset.cat) : selected.delete(i.dataset.cat); renderView(); updateWrite();
+  });
+  $('#next').textContent = data.next;
+  $('#writebox').hidden = false; $('#tabs').hidden = false;
+  updateWrite(); renderView();
+}
+function updateWrite() {
+  const n = data.categories.filter(c => selected.has(c.key)).reduce((a, c) => a + c.items.length, 0);
+  $('#write').disabled = n === 0;
+  $('#write').textContent = n ? `Write new version (${n} changes)` : 'Nothing selected';
+}
+
+function renderView() {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const notes = data.notes.length ? `<div class="notes"><h2>Left as is</h2>${data.notes.map(n => `<p>${esc(n)}</p>`).join('')}</div>` : '';
+  if (tab === 'findings') {
+    const open = new Set([...document.querySelectorAll('#view details[open]')].map(d => d.dataset.cat));
+    const blocks = data.categories.filter(c => c.items.length).map(c => `
+      <details data-cat="${c.key}" class="${selected.has(c.key) ? '' : 'off'}" ${open.has(c.key) ? 'open' : ''}>
+        <summary><span class="t">${esc(c.title)}</span><span class="status">${selected.has(c.key) ? 'will change' : 'skipped'}</span>
+        <span class="count">${c.items.length}</span></summary>
+        <table>${c.items.map(i => `<tr><td class="trk">${esc(i.track)}</td><td>${esc(i.detail)}</td></tr>`).join('')}</table>
+      </details>`).join('');
+    $('#view').innerHTML = notes + (blocks || '<div class="empty">Already matches the template.</div>');
+  } else {
+    const short = {group_names:'name', solo_keys:'key', track_colors:'color', clip_colors:'clips', auto_names:'name',
+                   rec_names:'rec', returns:'return', empty_lanes:'empty lanes', dup_lanes:'dup lanes'};
+    $('#view').innerHTML = notes + '<div class="tree">' + data.tracks.map(t => `
+      <div class="row ${t.type === 'Group' ? 'group' : ''}">
+        <span class="pos">#${t.pos}</span>
+        <span class="sw" style="background:#${PALETTE[t.color] || '888'}" title="color ${t.color}"></span>
+        <span class="nm" style="padding-left:${6 + t.depth * 18}px">${esc(t.name)}</span>
+        <span>${t.solo ? `<span class="key">${esc(t.solo)}</span>` : ''}</span>
+        <span class="lanes">${t.lanes ? t.lanes + ' lanes' : ''}</span>
+        <span class="flags">${t.flags.map(f => `<span class="flag ${selected.has(f) ? 'on' : ''}">${short[f] || f}</span>`).join('')}</span>
+      </div>`).join('') + '</div>';
+  }
+}
+
+async function write() {
+  const cats = [...selected].filter(k => data.categories.find(c => c.key === k).items.length);
+  const destructive = cats.filter(k => DESTRUCTIVE.has(k));
+  if (destructive.length && !confirm('This removes take lanes in the new version (the original stays untouched). Continue?')) return;
+  $('#write').disabled = true; status('Writing new version…');
+  try {
+    const r = await api('/api/write', {path: data.path, categories: cats});
+    status(`Wrote ${r.file} (${r.changes} changes)`, 'ok');
+    const p = projects[$('#project').value];
+    if (p && data.path.startsWith(p.dir)) p.versions.unshift(r.file);
+  } catch (e) { status(e.message, 'err'); }
+  updateWrite();
+}
+
+$('#project').onchange = () => { $('#path').value = ''; fillVersions(); };
+$('#load').onclick = analyze;
+$('#write').onclick = write;
+$('#path').onkeydown = e => { if (e.key === 'Enter') analyze(); };
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderView(); });
+init().catch(e => status(e.message, 'err'));
+</script>
+</body>
+</html>
