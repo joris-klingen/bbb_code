@@ -88,6 +88,7 @@
     <div id="writebox" hidden>
       <div class="next">Writes a new version next to the original:<br><b id="next"></b></div>
       <button id="write" class="primary">Write new version</button>
+      <p id="writestatus" class="status"></p>
     </div>
   </aside>
   <div class="content">
@@ -161,10 +162,12 @@ function render() {
     i.checked ? selected.add(i.dataset.cat) : selected.delete(i.dataset.cat); renderView(); updateWrite();
   });
   $('#next').textContent = data.next;
+  writeStatus('');
   $('#writebox').hidden = false; $('#tabs').hidden = false;
   updateWrite(); renderView();
 }
 function updateWrite() {
+  armed = false;
   const n = data.categories.filter(c => selected.has(c.key)).reduce((a, c) => a + c.items.length, 0);
   $('#write').disabled = n === 0;
   $('#write').textContent = n ? `Write new version (${n} changes)` : 'Nothing selected';
@@ -197,17 +200,29 @@ function renderView() {
   }
 }
 
+// No confirm() dialog: some browsers (and embedded panes) block it silently.
+// Removing take lanes needs a second click on the button instead.
+let armed = false;
+function writeStatus(msg, cls = '') { const s = $('#writestatus'); s.textContent = msg; s.className = 'status ' + cls; }
+
 async function write() {
   const cats = [...selected].filter(k => data.categories.find(c => c.key === k).items.length);
-  const destructive = cats.filter(k => DESTRUCTIVE.has(k));
-  if (destructive.length && !confirm('This removes take lanes in the new version (the original stays untouched). Continue?')) return;
-  $('#write').disabled = true; status('Writing new version…');
+  if (cats.some(k => DESTRUCTIVE.has(k)) && !armed) {
+    armed = true;
+    $('#write').textContent = 'Click again: also removes take lanes';
+    writeStatus('The original file stays untouched.');
+    return;
+  }
+  armed = false;
+  $('#write').disabled = true; $('#write').textContent = 'Writing…';
+  writeStatus('Writing new version, this can take 10–20 seconds…');
   try {
     const r = await api('/api/write', {path: data.path, categories: cats});
-    status(`Wrote ${r.file} (${r.changes} changes)`, 'ok');
+    writeStatus(`Done: wrote “${r.file}” (${r.changes} changes) next to the original.`, 'ok');
+    status(`Wrote ${r.file}`, 'ok');
     const p = projects[$('#project').value];
     if (p && data.path.startsWith(p.dir)) p.versions.unshift(r.file);
-  } catch (e) { status(e.message, 'err'); }
+  } catch (e) { writeStatus('Failed: ' + e.message, 'err'); }
   updateWrite();
 }
 

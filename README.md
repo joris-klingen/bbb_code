@@ -12,9 +12,8 @@ solo hotkeys and (later) take-lane cleanup. Python 3.9+, standard library only.
 - `bbb/build_template.py` — one-off generator of the first template (now maintained by hand in
   `../bbb_ableton_template/BBB template Project`).
 
-Run the app (from this folder); it opens http://localhost:8765 in the browser:
-
-    python3 -m bbb.app
+Run the app: double-click `BBB Restyle.command` (or run `python3 -m bbb.app` from this folder);
+it opens http://localhost:8765 in the browser. Close the Terminal window to stop it.
 
 Or restyle from the command line. Without `--write` it only reports; with `--write` it saves
 the next version next to the original, e.g. `song 2.5.als` -> `song 2.6 (restyle).als`.
