@@ -23,7 +23,8 @@ CATEGORIES = {
     'clip_colors': ('Clip colors', True, 'Clips (arrangement, session, take lanes) get the group color'),
     'order': ('Group order', True, 'Helpers, then groups in template order, then the rest'),
     'auto_names': ('Auto names', True, "'17-Kontakt 7' becomes 'kontakt 7'"),
-    'rec_names': ("'rec' names", False, "'rec' / 'NN-Audio' becomes the name of its group"),
+    'rec_names': ("'rec' names", False,
+                  "'rec' / 'NN-Audio' / 'NN-MIDI' get instrument + subgroup, e.g. 'vox chorus main 2'"),
     'returns': ('Returns', True, 'Return names and colors (never their order)'),
     'empty_lanes': ('Empty take lanes', False, 'Remove take lanes without clips that nothing refers to'),
     'dup_lanes': ('Duplicate take lanes', False,
@@ -50,6 +51,45 @@ NAME_CATEGORIES = ('group_names', 'auto_names', 'rec_names', 'returns')
 
 AUTO_NAME = re.compile(r'^\d+-(.*)$')                  # Live's default 'NN-Device' names
 GENERIC = re.compile(r'^(rec|audio|midi|group)$', re.I)  # names that say nothing
+
+
+def is_generic(t):
+    """'rec', or a Live default like '61-Audio' / '15-MIDI' / '16-Group' that was never renamed."""
+    name = als.name(t)
+    m = AUTO_NAME.match(name)
+    return bool(GENERIC.match(name) or (m and not als.val(t, 'Name/UserName', '')
+                                        and GENERIC.match(m.group(1).split(' ')[0])))
+
+
+def rec_base_name(t, group, by_id):
+    """Name for a generic track: instrument prefix + subgroup names, no repeated words."""
+    subs, g = [], als.group_id(t)
+    while g != '-1' and als.group_id(by_id[g]) != '-1':   # stop below the top-level group
+        if not is_generic(by_id[g]):
+            subs.append(als.name(by_id[g]).lower())
+        g = als.group_id(by_id[g])
+    subs.reverse()
+
+    def join(parts):
+        words = []
+        for w in ' '.join(parts).split():
+            if w not in words:
+                words.append(w)
+        return words
+    prefix = spec.REC_PREFIX.get(group.name, group.name.lower())
+    def names_instrument(parts):  # 'pre back', 'backings chorus', 'guitar solo'
+        return any(w.startswith(p) for p in prefix.split() for w in ' '.join(parts).split())
+    # keep a subgroup's own words when it already names the instrument
+    words = join(([] if names_instrument(subs) else [prefix]) + subs)
+    if len(words) > spec.REC_MAX_WORDS:
+        words = join(([] if names_instrument(subs[-1:]) else [prefix]) + subs[-1:])
+    if t.tag == 'MidiTrack' and 'midi' not in words:
+        words.append('midi')
+    return ' '.join(words)
+
+
+def has_clips(t):
+    return any(e.tag in als.CLIP_TAGS for e in t.iter())
 RETURN_ALIASES = {'amb': ['ambience', 'amb'], 'verb': ['long verb', 'verb', 'reverb'], 'delay': ['delay'],
                   'drum par': ['dums par', 'drums par', 'drum par'], 'vox par': ['scheps', 'vox par']}
 
@@ -96,6 +136,21 @@ def _return(name):
     return None
 
 
+def _name_generic(generic, block, add, setter):
+    """Add rec_names changes for one top-level group; number names that repeat anywhere in it
+    or clash with an existing track name there."""
+    by_base = {}
+    for t, base in generic:
+        by_base.setdefault(base, []).append(t)
+    generic_ids = {t.get('Id') for t, _ in generic}
+    existing = {als.name(x).lower() for x in block if x.get('Id') not in generic_ids and not als.is_group(x)}
+    for base, ts in by_base.items():
+        numbered = len(ts) > 1 or base in existing
+        for n, t in enumerate(ts, 1):
+            new = f'{base} {n}' if numbered else base
+            add('rec_names', t, f'→ {new}', setter(als.set_name, t, new))
+
+
 def analyze(root):
     tracks = als.tracks(root)
     by_id = {t.get('Id'): t for t in tracks}
@@ -121,6 +176,7 @@ def analyze(root):
               for t in tracks if als.group_id(t) == '-1' and t.tag != 'ReturnTrack']
     keyed = []
     for i, block in enumerate(blocks):
+        generic = []
         top = block[0]
         h = _helper(als.name(top))
         g = _group(als.name(top)) if als.is_group(top) else None
@@ -152,11 +208,16 @@ def analyze(root):
                 continue
             name, user = als.name(t), als.val(t, 'Name/UserName', '')
             m = AUTO_NAME.match(name)
-            parent = als.name(by_id[als.group_id(t)])
-            if GENERIC.match(name) or (m and not user and GENERIC.match(m.group(1).split(' ')[0])):
-                add('rec_names', t, f'→ {parent.lower()}', setter(als.set_name, t, parent.lower()))
+            if is_generic(t):
+                if als.is_group(t):
+                    notes.append(f'Group “{path(t)}” has a default name; name it by hand (its tracks skip it).')
+                elif not has_clips(t) and GENERIC.match(name):
+                    pass  # empty 'rec' track: ready to record, keeps its name
+                else:
+                    generic.append((t, rec_base_name(t, g, by_id)))
             elif m and not user:
                 add('auto_names', t, f'→ {m.group(1).lower()}', setter(als.set_name, t, m.group(1).lower()))
+        _name_generic(generic, block, add, setter)
 
     seen = set()
     for key, _, block in keyed:

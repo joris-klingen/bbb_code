@@ -32,6 +32,16 @@ GROUPS = [
     Group('BACKINGS',  5, '8', 'BACKINGS', aliases=['backings', 'vox backing', 'vox backings', 'vox back']),
 ]
 
+# Naming rule for tracks called 'rec', 'NN-Audio', 'NN-MIDI': <prefix> + the subgroup names,
+# without repeated words, numbered when several end up with the same name in one group.
+# Empty 'rec' tracks (no clips at all) are the ready-to-record tracks and keep their name.
+REC_PREFIX = {
+    'DRUMS': 'drums', 'PERC': 'perc', 'BASS': 'bass', 'KEYS': 'keys', 'PIANO': 'piano',
+    'SYNTHS': 'synth', 'STRINGS': 'strings', 'GUIT': 'guit', 'GUIT ACC': 'guit acc',
+    'VOX LEAD': 'vox', 'BACKINGS': 'back',
+}
+REC_MAX_WORDS = 4   # longer than this: prefix + nearest subgroup only
+
 # Standard subgroups inside a top-level group (Title case), in this order.
 SUBGROUPS = {
     'VOX LEAD': ['Vox Verse', 'Vox Chorus'],
