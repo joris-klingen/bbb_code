@@ -7,26 +7,32 @@
 <style>
   :root {
     --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
-    --accent: #e8590c; --accent-ink: #ffffff; --ok: #2f9e44; --warn: #c27c0e; --chip: #efede8;
+    --accent: #e8590c; --accent-ink: #ffffff; --ok: #2f9e44; --warn: #c27c0e; --err: #e03131; --chip: #efede8;
+    --hit: #fff1e6;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe7; --muted: #9b9a95; --line: #33332f;
-            --accent: #ff7a2e; --accent-ink: #161615; --chip: #2a2a27; }
+            --accent: #ff7a2e; --accent-ink: #161615; --chip: #2a2a27; --hit: #3a2618; }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--ink);
          font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
-  header { display: flex; gap: 12px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line);
-           background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
-  header h1 { font-size: 15px; margin: 0 8px 0 0; letter-spacing: .02em; }
+  header { display: flex; gap: 10px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--line);
+           background: var(--panel); position: sticky; top: 0; z-index: 3; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; letter-spacing: .02em; }
+  .ctl { display: contents; } .ctl[hidden] { display: none; }
   select, input[type=text], input[type=search] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
                              border-radius: 6px; padding: 6px 8px; }
   #folder { min-width: 130px; } #search { width: 170px; }
-  #project { min-width: 240px; } #version { min-width: 260px; } #path { flex: 1; min-width: 240px; }
+  #project { min-width: 220px; } #version { min-width: 240px; } #path { flex: 1; min-width: 220px; }
   button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            border-radius: 6px; padding: 6px 12px; cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 12px; }
+  .seg button.on { background: var(--ink); color: var(--panel); }
   main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 60px); }
   aside { border-right: 1px solid var(--line); padding: 16px; background: var(--panel); }
   aside h2, section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
@@ -37,9 +43,9 @@
   .count { font-variant-numeric: tabular-nums; font-size: 12px; background: var(--chip); border-radius: 10px; padding: 1px 8px; }
   .count.zero { opacity: .45; }
   .sep { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--warn); }
-  #writebox { margin-top: 18px; }
-  #writebox .next { color: var(--muted); font-size: 12px; margin: 6px 0 10px; word-break: break-all; }
-  .content { padding: 16px 24px; overflow: auto; }
+  .writebox { margin-top: 18px; }
+  .writebox .next { color: var(--muted); font-size: 12px; margin: 6px 0 10px; word-break: break-all; }
+  .content { padding: 16px 24px; overflow: auto; min-width: 0; }
   .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
   .tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
@@ -73,26 +79,55 @@
   .snd { font-size: 11px; color: var(--warn); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .status { font-size: 13px; color: var(--muted); }
-  .status.err { color: #e03131; } .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); } .status.ok { color: var(--ok); }
+  /* batch table */
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .progress { flex: 1; min-width: 160px; height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .tablewrap { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: auto; }
+  table.batch { font-size: 13px; }
+  table.batch th { position: sticky; top: 0; background: var(--panel); font-size: 11px; font-weight: 600; color: var(--muted);
+                   text-align: center; padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.batch th.l, table.batch td.l { text-align: left; }
+  table.batch td { padding: 5px 6px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.batch td.n { color: var(--muted); }
+  table.batch td.n.hit { color: var(--ink); background: var(--hit); font-weight: 600; }
+  table.batch th.off, table.batch td.off { opacity: .35; }
+  table.batch tr.clean td.name { color: var(--muted); }
+  table.batch td.name a { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted); cursor: pointer; }
+  table.batch td.ver { color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  table.batch td.res { text-align: left; font-size: 12px; max-width: 320px; white-space: normal; }
+  table.batch input { accent-color: var(--accent); }
+  .pill { font-size: 11px; border-radius: 4px; padding: 0 5px; background: var(--chip); color: var(--warn); }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
 </style>
 </head>
 <body>
 <header>
   <h1>BBB Restyle</h1>
+  <div class="seg" id="mode">
+    <button data-mode="single" class="on">Project</button>
+    <button data-mode="batch">All projects</button>
+  </div>
   <select id="folder" title="Folder"></select>
   <input id="search" type="search" placeholder="Search projects…" autocomplete="off">
-  <select id="project"><option>Loading projects…</option></select>
-  <select id="version"></select>
-  <input id="path" type="text" placeholder="…or paste the full path of an .als">
-  <button id="load" class="primary">Analyze</button>
+  <span class="ctl" id="single-ctl">
+    <select id="project"><option>Loading projects…</option></select>
+    <select id="version"></select>
+    <input id="path" type="text" placeholder="…or paste the full path of an .als">
+    <button id="load" class="primary">Analyze</button>
+  </span>
+  <span class="ctl" id="batch-ctl" hidden>
+    <button id="scan" class="primary">Scan folder</button>
+  </span>
   <span id="status" class="status"></span>
 </header>
-<main>
+
+<main id="single">
   <aside>
     <h2>Restyle</h2>
     <div id="toggles"><p class="status">Load a project to see what differs from the template.</p></div>
-    <div id="writebox" hidden>
+    <div id="writebox" class="writebox" hidden>
       <div class="next">Writes a new version next to the original:<br><b id="next"></b></div>
       <div id="sound" class="sound"></div>
       <button id="write" class="primary">Write new version</button>
@@ -107,6 +142,27 @@
     <div id="view"><div class="empty">No project loaded.</div></div>
   </div>
 </main>
+
+<main id="batch" hidden>
+  <aside>
+    <h2>Restyle selected projects</h2>
+    <div id="btoggles"></div>
+    <div class="writebox">
+      <div class="next">Each project gets a new version next to its latest one; originals stay untouched.</div>
+      <div id="bsound" class="sound"></div>
+      <button id="bwrite" class="primary" disabled>Restyle selected</button>
+      <p id="bwritestatus" class="status"></p>
+    </div>
+  </aside>
+  <div class="content">
+    <div class="bar">
+      <span id="bsummary" class="status">Scan a folder to compare every project's latest version with the template.</span>
+      <div class="progress" id="bprogress" hidden><i></i></div>
+    </div>
+    <div id="bview"></div>
+  </div>
+</main>
+
 <script>
 // Live's 70-color clip/track palette (approximate sRGB), indexed 0-69
 const PALETTE = ['FF94A6','FFA529','CC9927','F7F47C','BFFB00','1AFF2F','25FFA8','5CFFE8','8BC5FF','5480E4','92A7FF','D86CE4','E553A0','FFFFFF',
@@ -115,9 +171,11 @@ const PALETTE = ['FF94A6','FFA529','CC9927','F7F47C','BFFB00','1AFF2F','25FFA8',
   'C6928B','B78256','99836A','BFBA69','A6BE00','7DB04D','88C2BA','9BB3C4','85A5C2','8393CC','A595B5','BF9FBE','BC7196','7B7B7B',
   'AF3333','A95131','724F41','DBC300','85961F','539F31','0A9C8E','236384','1A2F96','2F52A2','624BAD','A34BAD','CC2E6E','3C3C3C'];
 const DESTRUCTIVE = new Set(['empty_lanes', 'dup_lanes']);
+const SHORT = {group_names: 'Names', solo_keys: 'Keys', track_colors: 'Colors', clip_colors: 'Clips', order: 'Order',
+               auto_names: 'Auto', rec_names: 'rec', returns: 'Returns', empty_lanes: 'Empty', dup_lanes: 'Dup'};
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let projects = [], data = null, tab = 'findings', selected = new Set();
+let projects = [], categories = [], data = null, tab = 'findings', selected = new Set(), mode = 'single';
 
 function status(msg, cls = '') { const s = $('#status'); s.textContent = msg; s.className = 'status ' + cls; }
 async function api(url, body) {
@@ -126,25 +184,44 @@ async function api(url, body) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
 
 async function init() {
-  projects = await api('/api/projects');
+  [projects, categories] = await Promise.all([api('/api/projects'), api('/api/categories')]);
   const folders = [...new Set(projects.map(p => p.folder))];
   $('#folder').innerHTML = folders.map(f => `<option>${esc(f)}</option>`).join('');
-  let last = null;
-  try { last = localStorage.getItem('bbb.project'); } catch (e) {}
+  const last = store.get('bbb.project');
   if (last && projects[last]) $('#folder').value = projects[last].folder;
   fillProjects(last);
+  bSelected = new Set(categories.filter(c => c.default).map(c => c.key));
+  renderBatchToggles();
+  setMode(store.get('bbb.mode') || 'single');
 }
+
+function setMode(m) {
+  mode = m; store.set('bbb.mode', m);
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('#single').hidden = m !== 'single'; $('#batch').hidden = m !== 'batch';
+  $('#single-ctl').hidden = m !== 'single'; $('#batch-ctl').hidden = m !== 'batch';
+  status('');
+  if (m === 'batch') { buildRows(); renderBatch(); }
+}
+
+// ---------------------------------------------------------------- single project
 function fillProjects(keep) {
-  const folder = $('#folder').value, q = $('#search').value.trim().toLowerCase();
-  const shown = projects.map((p, i) => [p, i])
-    .filter(([p]) => p.folder === folder && (!q || p.project.toLowerCase().includes(q)));
+  const shown = visibleProjects();
   $('#project').innerHTML = shown.length
     ? shown.map(([p, i]) => `<option value="${i}">${esc(p.project.replace(/ Project$/, ''))}</option>`).join('')
     : '<option value="">No matching projects</option>';
   if (keep != null && shown.some(([, i]) => String(i) === String(keep))) $('#project').value = keep;
   fillVersions();
+}
+function visibleProjects() {
+  const folder = $('#folder').value, q = $('#search').value.trim().toLowerCase();
+  return projects.map((p, i) => [p, i]).filter(([p]) => p.folder === folder && (!q || p.project.toLowerCase().includes(q)));
 }
 function fillVersions() {
   const p = projects[$('#project').value];
@@ -160,9 +237,10 @@ function currentPath() {
 }
 
 async function analyze() {
-  const path = currentPath();
+  let path;
+  try { path = currentPath(); } catch (e) { return status(e.message, 'err'); }
   $('#load').disabled = true; status('Reading ' + path.split('/').pop() + '…');
-  try { localStorage.setItem('bbb.project', $('#project').value); } catch (e) {}
+  store.set('bbb.project', $('#project').value);
   try {
     data = await api('/api/analyze', {path});
     selected = new Set(data.categories.filter(c => c.default).map(c => c.key));
@@ -172,15 +250,20 @@ async function analyze() {
   $('#load').disabled = false;
 }
 
-function render() {
-  const cats = data.categories;
-  const toggle = c => `<label class="toggle">
-      <input type="checkbox" data-cat="${c.key}" ${selected.has(c.key) ? 'checked' : ''} ${c.items.length ? '' : 'disabled'}>
-      <span>${esc(c.title)}${c.sound === 'caution' ? ' <span class="snd" title="' + esc(c.sound_text) + '">⚠</span>' : ''}</span><span class="count ${c.items.length ? '' : 'zero'}">${c.items.length}</span>
+function toggleHtml(c, on, count, attr) {
+  return `<label class="toggle">
+      <input type="checkbox" ${attr}="${c.key}" ${on ? 'checked' : ''} ${count ? '' : 'disabled'}>
+      <span>${esc(c.title)}${c.sound === 'caution' ? ' <span class="snd" title="' + esc(c.sound_text) + '">⚠</span>' : ''}</span><span class="count ${count ? '' : 'zero'}">${count}</span>
       <span class="desc">${esc(c.description)}</span></label>`;
-  $('#toggles').innerHTML = cats.filter(c => !DESTRUCTIVE.has(c.key)).map(toggle).join('')
+}
+function togglesHtml(cats, isOn, countOf, attr) {
+  return cats.filter(c => !DESTRUCTIVE.has(c.key)).map(c => toggleHtml(c, isOn(c.key), countOf(c), attr)).join('')
     + '<div class="sep">Cleanup — removes take lanes</div>'
-    + cats.filter(c => DESTRUCTIVE.has(c.key)).map(toggle).join('');
+    + cats.filter(c => DESTRUCTIVE.has(c.key)).map(c => toggleHtml(c, isOn(c.key), countOf(c), attr)).join('');
+}
+
+function render() {
+  $('#toggles').innerHTML = togglesHtml(data.categories, k => selected.has(k), c => c.items.length, 'data-cat');
   $('#toggles').querySelectorAll('input').forEach(i => i.onchange = () => {
     i.checked ? selected.add(i.dataset.cat) : selected.delete(i.dataset.cat); renderView(); updateWrite();
   });
@@ -189,16 +272,19 @@ function render() {
   $('#writebox').hidden = false; $('#tabs').hidden = false;
   updateWrite(); renderView();
 }
+function soundHtml(cautionCats, warningTexts) {
+  const extra = cautionCats.map(c => `<p><b>${esc(c.title)}:</b> ${esc(c.sound_text)}</p>`)
+    .concat(warningTexts.map(t => `<p>${esc(t)}</p>`));
+  return [extra.length ? 'caution' : 'ok',
+    `<p><b>Sound:</b> ${extra.length ? 'unchanged, with notes below.' : 'unchanged — this selection only changes names, colors, order or keys.'}</p>`
+    + extra.join('')
+    + '<p>Every write is verified: if anything that affects playback differs from the original, nothing is written.</p>'];
+}
 function renderSound() {
   const sel = data.categories.filter(c => selected.has(c.key) && c.items.length);
-  const cautions = sel.filter(c => c.sound === 'caution').map(c => `<p><b>${esc(c.title)}:</b> ${esc(c.sound_text)}</p>`);
-  const warns = data.warnings.filter(w => !w.categories.length || w.categories.some(k => selected.has(k)))
-    .map(w => `<p>${esc(w.text)}</p>`);
-  const extra = cautions.concat(warns);
-  $('#sound').className = 'sound ' + (extra.length ? 'caution' : 'ok');
-  $('#sound').innerHTML = `<p><b>Sound:</b> ${extra.length ? 'unchanged, with notes below.' : 'unchanged — this selection only changes names, colors, order or keys.'}</p>`
-    + extra.join('')
-    + '<p>Every write is verified: if anything that affects playback differs from the original, nothing is written.</p>';
+  const warns = data.warnings.filter(w => !w.categories.length || w.categories.some(k => selected.has(k))).map(w => w.text);
+  const [cls, html] = soundHtml(sel.filter(c => c.sound === 'caution'), warns);
+  $('#sound').className = 'sound ' + cls; $('#sound').innerHTML = html;
 }
 function updateWrite() {
   armed = false;
@@ -255,18 +341,193 @@ async function write() {
     const r = await api('/api/write', {path: data.path, categories: cats});
     writeStatus(`Done: wrote “${r.file}” (${r.changes} changes) next to the original. Sound check passed.`, 'ok');
     status(`Wrote ${r.file}`, 'ok');
-    const p = projects[$('#project').value];
-    if (p && data.path.startsWith(p.dir)) p.versions.unshift(r.file);
+    await refreshProjects();
   } catch (e) { writeStatus('Failed: ' + e.message, 'err'); }
   updateWrite();
 }
 
+async function refreshProjects() {
+  const keep = $('#project').value, ver = $('#version').value;
+  projects = await api('/api/projects');
+  fillProjects(keep);
+  if ([...$('#version').options].some(o => o.value === ver)) $('#version').value = ver;
+}
+
+function openInSingle(i, version) {
+  setMode('single');
+  $('#path').value = '';
+  fillProjects(i); $('#project').value = i; fillVersions();
+  if (version) $('#version').value = version;
+  analyze();
+}
+
+// ---------------------------------------------------------------- all projects (batch)
+let bSelected = new Set(), rows = [], checked = new Set(), bArmed = false, polling = null, jobKind = null;
+
+function buildRows() {
+  const prev = new Map(rows.map(r => [r.path, r]));
+  rows = visibleProjects().map(([p, i]) => {
+    const path = p.dir + p.versions[0];
+    const old = prev.get(path);
+    return {i, name: p.project.replace(/ Project$/, ''), path, file: p.versions[0],
+            scan: old ? old.scan : null, write: old ? old.write : null};
+  });
+}
+function countsOf(r) { return r.scan && r.scan.ok ? r.scan.data.counts : null; }
+function selectedCount(r) {
+  const c = countsOf(r); if (!c) return 0;
+  return [...bSelected].reduce((a, k) => a + (c[k] || 0), 0);
+}
+
+function renderBatchToggles() {
+  const total = c => rows.reduce((a, r) => a + ((countsOf(r) || {})[c.key] ? 1 : 0), 0);
+  $('#btoggles').innerHTML = togglesHtml(categories, k => bSelected.has(k), total, 'data-bcat')
+    .replace(/<span class="count ([^"]*)">(\d+)<\/span>/g, (m, cls, n) => `<span class="count ${cls}" title="projects with changes">${n} proj</span>`)
+    .replace(/disabled>/g, '>');  // categories stay selectable before a scan
+  $('#btoggles').querySelectorAll('input').forEach(i => i.onchange = () => {
+    i.checked ? bSelected.add(i.dataset.bcat) : bSelected.delete(i.dataset.bcat); renderBatch();
+  });
+}
+
+function renderBatch() {
+  renderBatchToggles();
+  const scanned = rows.filter(r => r.scan);
+  if (!rows.length) { $('#bview').innerHTML = '<div class="empty">No projects match.</div>'; updateBatchWrite(); return; }
+  const head = `<tr><th><input type="checkbox" id="checkall" title="Select all with changes"></th><th class="l">Project</th>
+    <th class="l">Latest version</th><th>Live</th>
+    ${categories.map(c => `<th class="${bSelected.has(c.key) ? '' : 'off'}" title="${esc(c.title)}">${SHORT[c.key]}${c.sound === 'caution' ? ' ⚠' : ''}</th>`).join('')}
+    <th>To do</th><th class="l">Result</th></tr>`;
+  const body = rows.map(r => {
+    const c = countsOf(r), n = selectedCount(r);
+    const live = r.scan && r.scan.ok ? (r.scan.data.live || '').replace('Ableton Live ', '') : '';
+    const warn = r.scan && r.scan.ok && r.scan.data.warnings.length
+      ? ` <span class="pill" title="${esc(r.scan.data.warnings.map(w => w.text).join(' '))}">!</span>` : '';
+    const cells = categories.map(cat => {
+      const v = c ? (c[cat.key] || 0) : '';
+      const cls = ['n', bSelected.has(cat.key) ? '' : 'off', c && v && bSelected.has(cat.key) ? 'hit' : ''].join(' ');
+      return `<td class="${cls}">${c ? (v || '·') : ''}</td>`;
+    }).join('');
+    let res = '';
+    if (r.scan && !r.scan.ok) res = `<span class="status err">${esc(r.scan.error)}</span>`;
+    else if (!r.scan) res = '<span class="status">not scanned</span>';
+    if (r.write) res = r.write.ok
+      ? `<span class="status ok">✓ wrote ${esc(r.write.data.file)} (${r.write.data.changes})</span>`
+      : `<span class="status err">✗ ${esc(r.write.error)}</span>`;
+    else if (r.pending) res = '<span class="status">writing…</span>';
+    return `<tr class="${c && !n ? 'clean' : ''}">
+      <td><input type="checkbox" data-path="${esc(r.path)}" ${checked.has(r.path) ? 'checked' : ''} ${n ? '' : 'disabled'}></td>
+      <td class="l name"><a data-open="${r.i}" data-ver="${esc(r.file)}" title="Open in project view">${esc(r.name)}</a>${warn}</td>
+      <td class="l ver" title="${esc(r.file)}">${esc(r.file)}</td><td class="n">${esc(live)}</td>${cells}
+      <td><b>${c ? (n || '✓') : ''}</b></td><td class="res">${res}</td></tr>`;
+  }).join('');
+  $('#bview').innerHTML = `<div class="tablewrap"><table class="batch"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  $('#bview').querySelectorAll('input[data-path]').forEach(i => i.onchange = () => {
+    i.checked ? checked.add(i.dataset.path) : checked.delete(i.dataset.path); updateBatchWrite();
+  });
+  $('#checkall').onchange = e => {
+    rows.forEach(r => { if (e.target.checked && selectedCount(r)) checked.add(r.path); else checked.delete(r.path); });
+    renderBatch();
+  };
+  $('#bview').querySelectorAll('a[data-open]').forEach(a => a.onclick = () => openInSingle(a.dataset.open, a.dataset.ver));
+  const todo = scanned.filter(r => selectedCount(r)).length;
+  if (!polling) $('#bsummary').textContent = scanned.length
+    ? `${scanned.length} of ${rows.length} projects scanned · ${todo} differ from the template for the selected categories`
+    : `${rows.length} projects in this folder. Scan to compare their latest versions with the template.`;
+  updateBatchWrite();
+}
+
+function updateBatchWrite() {
+  bArmed = false;
+  // drop selections that no longer have anything to do
+  rows.forEach(r => { if (!selectedCount(r)) checked.delete(r.path); });
+  const sel = rows.filter(r => checked.has(r.path));
+  const cautions = categories.filter(c => c.sound === 'caution' && bSelected.has(c.key) && sel.some(r => (countsOf(r) || {})[c.key]));
+  const groups = new Map();
+  sel.forEach(r => r.scan.data.warnings.forEach(w => {
+    if (w.categories.length && !w.categories.some(k => bSelected.has(k))) return;
+    const key = w.text.replace(/Ableton Live \d+(\.\d+)*/, 'Live 11').replace(/\d+ Max for Live/, 'Max for Live');
+    groups.set(key, (groups.get(key) || 0) + 1);
+  }));
+  const warns = [...groups].map(([t, n]) => `${n} project${n > 1 ? 's' : ''}: ${t}`);
+  const [cls, html] = soundHtml(cautions, warns);
+  $('#bsound').className = 'sound ' + cls; $('#bsound').innerHTML = html;
+  const busy = !!polling;
+  $('#bwrite').disabled = busy || !sel.length;
+  $('#bwrite').textContent = busy && jobKind === 'write' ? 'Writing…'
+    : sel.length ? `Restyle ${sel.length} project${sel.length > 1 ? 's' : ''}` : 'Select projects to restyle';
+  $('#scan').disabled = busy;
+}
+
+async function scan() {
+  buildRows();
+  if (!rows.length) return;
+  rows.forEach(r => { r.write = null; });
+  try { await api('/api/batch/scan', {paths: rows.map(r => r.path)}); } catch (e) { return status(e.message, 'err'); }
+  startPolling('scan');
+}
+
+async function batchWrite() {
+  const sel = rows.filter(r => checked.has(r.path));
+  const cats = [...bSelected];
+  const removesLanes = sel.some(r => cats.some(k => DESTRUCTIVE.has(k) && countsOf(r)[k]));
+  if (removesLanes && !bArmed) {
+    bArmed = true;
+    $('#bwrite').textContent = 'Click again: also removes take lanes';
+    $('#bwritestatus').textContent = 'Originals stay untouched.'; $('#bwritestatus').className = 'status';
+    return;
+  }
+  bArmed = false;
+  sel.forEach(r => { r.write = null; r.pending = true; });
+  try { await api('/api/batch/write', {paths: sel.map(r => r.path), categories: cats}); }
+  catch (e) { sel.forEach(r => { r.pending = false; }); return status(e.message, 'err'); }
+  $('#bwritestatus').textContent = ''; startPolling('write');
+}
+
+function startPolling(kind) {
+  jobKind = kind;
+  $('#bprogress').hidden = false;
+  const tick = async () => {
+    let j;
+    try { j = (await api('/api/job')).job; } catch (e) { return; }
+    if (!j) return;
+    $('#bprogress i').style.width = (100 * j.done / Math.max(1, j.total)) + '%';
+    $('#bsummary').textContent = `${kind === 'scan' ? 'Scanning' : 'Writing'}… ${j.done} of ${j.total}`;
+    rows.forEach(r => {
+      const res = j.results[r.path];
+      if (!res) return;
+      if (j.kind === 'scan') r.scan = res; else { r.write = res; r.pending = false; }
+    });
+    if (!j.running) {
+      clearInterval(polling); polling = null; $('#bprogress').hidden = true;
+      if (j.kind === 'write') {
+        const ok = Object.values(j.results).filter(x => x.ok).length, failed = j.total - ok;
+        $('#bwritestatus').textContent = `Wrote ${ok} new version${ok === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}. Sound check passed for every written file.`;
+        $('#bwritestatus').className = 'status ' + (failed ? 'err' : 'ok');
+        checked.clear();
+        projects = await api('/api/projects');
+        fillProjects($('#project').value);
+        // keep results visible; the rows now point at the new versions once rescanned
+        const results = new Map(rows.map(r => [r.name, r.write]));
+        buildRows(); rows.forEach(r => { r.write = results.get(r.name) || null; });
+      }
+    }
+    renderBatch();
+  };
+  polling = setInterval(tick, 1000);
+  tick();
+  updateBatchWrite();
+}
+
+// ---------------------------------------------------------------- wiring
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
 $('#project').onchange = () => { $('#path').value = ''; fillVersions(); };
-$('#folder').onchange = () => fillProjects($('#project').value);
-$('#search').oninput = () => fillProjects($('#project').value);
-$('#search').onkeydown = e => { if (e.key === 'Enter') analyze(); };
+$('#folder').onchange = () => { fillProjects($('#project').value); if (mode === 'batch') { buildRows(); renderBatch(); } };
+$('#search').oninput = () => { fillProjects($('#project').value); if (mode === 'batch') { buildRows(); renderBatch(); } };
+$('#search').onkeydown = e => { if (e.key === 'Enter') (mode === 'batch' ? scan() : analyze()); };
 $('#load').onclick = analyze;
 $('#write').onclick = write;
+$('#scan').onclick = scan;
+$('#bwrite').onclick = batchWrite;
 $('#path').onkeydown = e => { if (e.key === 'Enter') analyze(); };
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderView(); });
 init().catch(e => status(e.message, 'err'));

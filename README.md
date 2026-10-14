@@ -15,6 +15,11 @@ solo hotkeys and (later) take-lane cleanup. Python 3.9+, standard library only.
 Run the app: double-click `BBB Restyle.command` (or run `python3 -m bbb.app` from this folder);
 it opens http://localhost:8765 in the browser. Close the Terminal window to stop it.
 
+The app has two views: **Project** (one `.als`, with differences per category and the track
+structure) and **All projects** (scan a whole folder, see per project how far its latest version
+is from the template, and restyle a selection in one go). Every write is verified to sound the
+same as the original; if anything that affects playback differs, nothing is written.
+
 Or restyle from the command line. Without `--write` it only reports; with `--write` it saves
 the next version next to the original, e.g. `song 2.5.als` -> `song 2.6 (restyle).als`.
 `--only` picks categories (default: the ones that are on by default in the app):
