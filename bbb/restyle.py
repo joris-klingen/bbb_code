@@ -30,6 +30,24 @@ CATEGORIES = {
                   'Remove take lanes identical to an earlier lane (same or other track) that nothing refers to'),
 }
 
+# Effect on the sound per category: (level, explanation). Levels: 'none' or 'caution'.
+# Whatever is selected, the written file is checked: everything that can affect playback
+# must be identical to the original (see als.sound_fingerprint), otherwise nothing is written.
+SOUND = {
+    'group_names': ('none', 'Names are not used for routing or playback.'),
+    'solo_keys': ('none', 'Only a key mapping; nothing is soloed.'),
+    'track_colors': ('none', 'Visual only.'),
+    'clip_colors': ('none', 'Visual only.'),
+    'order': ('none', 'Routing goes by track id and group, not by position.'),
+    'auto_names': ('none', 'Names are not used for routing or playback.'),
+    'rec_names': ('none', 'Names are not used for routing or playback.'),
+    'returns': ('none', 'Sends go by position, which stays the same.'),
+    'empty_lanes': ('none', 'Removes nothing playable.'),
+    'dup_lanes': ('caution', 'Sound unchanged, but these takes can no longer be re-comped on this track '
+                             '(identical copies stay on the track listed).'),
+}
+NAME_CATEGORIES = ('group_names', 'auto_names', 'rec_names', 'returns')
+
 AUTO_NAME = re.compile(r'^\d+-(.*)$')                  # Live's default 'NN-Device' names
 GENERIC = re.compile(r'^(rec|audio|midi|group)$', re.I)  # names that say nothing
 RETURN_ALIASES = {'amb': ['ambience', 'amb'], 'verb': ['long verb', 'verb', 'reverb'], 'delay': ['delay'],
@@ -50,6 +68,7 @@ class Plan:
     changes: list
     notes: list
     tracks: list        # current structure for display: dicts with name/type/depth/color/solo/flags
+    warnings: list = field(default_factory=list)  # dicts: categories (empty = any write), text
 
 
 def _helper(name):
@@ -226,7 +245,17 @@ def analyze(root):
         struct.append(dict(id=t.get('Id'), pos=pos[t.get('Id')], name=als.name(t), type=t.tag.replace('Track', ''),
                            depth=path(t).count(' › '), color=als.color(t), solo=als.solo_key(t),
                            lanes=len(lanes), flags=sorted(flagged.get(t.get('Id'), []))))
-    return Plan(changes, notes, struct)
+    warnings = []
+    m4l = sum(1 for e in root.iter() if e.tag.startswith('MxDevice'))
+    if m4l:
+        warnings.append(dict(categories=list(NAME_CATEGORIES),
+                             text=f'This set has {m4l} Max for Live device(s). Some refer to tracks by name; '
+                                  'check them after renaming.'))
+    creator = root.get('Creator', '')
+    if 'Live 11' in creator or 'Live 10' in creator:
+        warnings.append(dict(categories=[], text=f'Saved by {creator}. The new version is unchanged in sound, '
+                                                 'but saving it from Live 12 upgrades it for good.'))
+    return Plan(changes, notes, struct, warnings)
 
 
 def apply(root, plan, categories):
@@ -256,12 +285,27 @@ def next_version_path(path):
 
 
 def restyle_file(path, categories):
-    """Load, apply the categories, save as the next version. Returns (out_path, applied changes)."""
+    """Load, apply the categories, save as the next version, verified to sound identical.
+
+    Returns (out_path, applied changes). Raises ValueError (and writes nothing) if anything
+    that can affect playback differs from the original.
+    """
     root = als.load(path)
+    before = als.sound_fingerprint(root)
     plan = analyze(root)
     done = apply(root, plan, categories)
+    diffs = als.compare_sound(before, als.sound_fingerprint(root), root)
+    if diffs:
+        raise ValueError('sound check failed, nothing written; changed: ' + ', '.join(diffs))
     out = next_version_path(path)
-    als.save(root, out)
+    tmp = out + '.partial'
+    als.save(root, tmp)
+    written = als.load(tmp)  # verify what actually landed on disk
+    diffs = als.compare_sound(before, als.sound_fingerprint(written), written)
+    if diffs:
+        os.remove(tmp)
+        raise ValueError('sound check of the written file failed, nothing kept; changed: ' + ', '.join(diffs))
+    os.rename(tmp, out)
     return out, done
 
 

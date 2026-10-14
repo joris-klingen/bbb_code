@@ -366,6 +366,62 @@ def make_empty_midi_clip(root, proto, start, length, clip_name, clip_color, clip
     return c
 
 
+# --- sound fingerprint ---------------------------------------------------------------
+# Everything that can affect playback, per track. Restyling may only change what is skipped
+# here: names, colors, solo-key mappings, track order and take lanes (never played; only
+# the comped clips on the main lane are).
+
+_TRACK_TAGS = ('MidiTrack', 'AudioTrack', 'GroupTrack', 'ReturnTrack')
+_SKIP_IN_TRACK = ('Name', 'Color', 'TakeLanes')
+_SKIP_IN_CLIP = ('Color',)
+_SKIP_IN_MIXER = ('HeadKeyMidi',)
+
+
+def _digest(el, h, skip):
+    h.update(el.tag.encode())
+    for k in sorted(el.attrib):
+        h.update(f'{k}={el.attrib[k]};'.encode())
+    if el.text and el.text.strip():
+        h.update(el.text.strip().encode())
+    for child in el:
+        if child.tag in skip:
+            continue
+        if child.tag in CLIP_TAGS:
+            sub = _SKIP_IN_CLIP
+        elif child.tag == 'Mixer':
+            sub = _SKIP_IN_MIXER
+        else:
+            sub = ()
+        _digest(child, h, sub)
+        h.update(b'/')
+
+
+def sound_fingerprint(root):
+    """{'set': hash of everything outside the tracks, <track id>: hash of that track}."""
+    ls = liveset(root)
+    fp = {}
+    h = hashlib.sha1()
+    for child in ls:
+        if child.tag != 'Tracks':
+            _digest(child, h, ())
+    fp['set'] = h.hexdigest()
+    for t in tracks(root):
+        h = hashlib.sha1()
+        _digest(t, h, _SKIP_IN_TRACK)
+        fp[t.get('Id')] = h.hexdigest()
+    return fp
+
+
+def compare_sound(before, after, root=None):
+    """List of differences in playback-relevant content (empty = sound unchanged)."""
+    names = {t.get('Id'): name(t) for t in tracks(root)} if root is not None else {}
+    diffs = []
+    for k in sorted(set(before) | set(after)):
+        if before.get(k) != after.get(k):
+            diffs.append('project settings' if k == 'set' else f'track {names.get(k, k)!r}')
+    return diffs
+
+
 def validate(root):
     """Basic integrity checks; returns a list of problems (empty = ok)."""
     problems = []

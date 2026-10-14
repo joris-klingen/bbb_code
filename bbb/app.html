@@ -19,9 +19,10 @@
   header { display: flex; gap: 12px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line);
            background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
   header h1 { font-size: 15px; margin: 0 8px 0 0; letter-spacing: .02em; }
-  select, input[type=text] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  select, input[type=text], input[type=search] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
                              border-radius: 6px; padding: 6px 8px; }
-  #project { min-width: 260px; } #version { min-width: 260px; } #path { flex: 1; min-width: 240px; }
+  #folder { min-width: 130px; } #search { width: 170px; }
+  #project { min-width: 240px; } #version { min-width: 260px; } #path { flex: 1; min-width: 240px; }
   button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            border-radius: 6px; padding: 6px 12px; cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
@@ -66,6 +67,10 @@
   .flags { display: flex; gap: 4px; flex-wrap: wrap; }
   .flag { font-size: 11px; border-radius: 4px; padding: 0 6px; background: var(--chip); color: var(--muted); }
   .flag.on { background: var(--accent); color: var(--accent-ink); }
+  .sound { border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; font-size: 12px; background: var(--chip); }
+  .sound.ok { border-left: 3px solid var(--ok); } .sound.caution { border-left: 3px solid var(--warn); }
+  .sound p { margin: 3px 0; } .sound b { font-weight: 600; }
+  .snd { font-size: 11px; color: var(--warn); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .status { font-size: 13px; color: var(--muted); }
   .status.err { color: #e03131; } .status.ok { color: var(--ok); }
@@ -75,6 +80,8 @@
 <body>
 <header>
   <h1>BBB Restyle</h1>
+  <select id="folder" title="Folder"></select>
+  <input id="search" type="search" placeholder="Search projects…" autocomplete="off">
   <select id="project"><option>Loading projects…</option></select>
   <select id="version"></select>
   <input id="path" type="text" placeholder="…or paste the full path of an .als">
@@ -87,6 +94,7 @@
     <div id="toggles"><p class="status">Load a project to see what differs from the template.</p></div>
     <div id="writebox" hidden>
       <div class="next">Writes a new version next to the original:<br><b id="next"></b></div>
+      <div id="sound" class="sound"></div>
       <button id="write" class="primary">Write new version</button>
       <p id="writestatus" class="status"></p>
     </div>
@@ -121,18 +129,33 @@ async function api(url, body) {
 
 async function init() {
   projects = await api('/api/projects');
-  $('#project').innerHTML = projects.map((p, i) => `<option value="${i}">${esc(p.folder)} / ${esc(p.project)}</option>`).join('');
-  try { const last = localStorage.getItem('bbb.project'); if (last && projects[last]) $('#project').value = last; } catch (e) {}
+  const folders = [...new Set(projects.map(p => p.folder))];
+  $('#folder').innerHTML = folders.map(f => `<option>${esc(f)}</option>`).join('');
+  let last = null;
+  try { last = localStorage.getItem('bbb.project'); } catch (e) {}
+  if (last && projects[last]) $('#folder').value = projects[last].folder;
+  fillProjects(last);
+}
+function fillProjects(keep) {
+  const folder = $('#folder').value, q = $('#search').value.trim().toLowerCase();
+  const shown = projects.map((p, i) => [p, i])
+    .filter(([p]) => p.folder === folder && (!q || p.project.toLowerCase().includes(q)));
+  $('#project').innerHTML = shown.length
+    ? shown.map(([p, i]) => `<option value="${i}">${esc(p.project.replace(/ Project$/, ''))}</option>`).join('')
+    : '<option value="">No matching projects</option>';
+  if (keep != null && shown.some(([, i]) => String(i) === String(keep))) $('#project').value = keep;
   fillVersions();
 }
 function fillVersions() {
   const p = projects[$('#project').value];
+  if (!p) { $('#version').innerHTML = ''; return; }
   $('#version').innerHTML = p.versions.map(v => `<option>${esc(v)}</option>`).join('');
 }
 function currentPath() {
   const typed = $('#path').value.trim();
   if (typed) return typed;
   const p = projects[$('#project').value];
+  if (!p) throw new Error('Pick a project first');
   return p.dir + $('#version').value;
 }
 
@@ -153,7 +176,7 @@ function render() {
   const cats = data.categories;
   const toggle = c => `<label class="toggle">
       <input type="checkbox" data-cat="${c.key}" ${selected.has(c.key) ? 'checked' : ''} ${c.items.length ? '' : 'disabled'}>
-      <span>${esc(c.title)}</span><span class="count ${c.items.length ? '' : 'zero'}">${c.items.length}</span>
+      <span>${esc(c.title)}${c.sound === 'caution' ? ' <span class="snd" title="' + esc(c.sound_text) + '">⚠</span>' : ''}</span><span class="count ${c.items.length ? '' : 'zero'}">${c.items.length}</span>
       <span class="desc">${esc(c.description)}</span></label>`;
   $('#toggles').innerHTML = cats.filter(c => !DESTRUCTIVE.has(c.key)).map(toggle).join('')
     + '<div class="sep">Cleanup — removes take lanes</div>'
@@ -166,8 +189,20 @@ function render() {
   $('#writebox').hidden = false; $('#tabs').hidden = false;
   updateWrite(); renderView();
 }
+function renderSound() {
+  const sel = data.categories.filter(c => selected.has(c.key) && c.items.length);
+  const cautions = sel.filter(c => c.sound === 'caution').map(c => `<p><b>${esc(c.title)}:</b> ${esc(c.sound_text)}</p>`);
+  const warns = data.warnings.filter(w => !w.categories.length || w.categories.some(k => selected.has(k)))
+    .map(w => `<p>${esc(w.text)}</p>`);
+  const extra = cautions.concat(warns);
+  $('#sound').className = 'sound ' + (extra.length ? 'caution' : 'ok');
+  $('#sound').innerHTML = `<p><b>Sound:</b> ${extra.length ? 'unchanged, with notes below.' : 'unchanged — this selection only changes names, colors, order or keys.'}</p>`
+    + extra.join('')
+    + '<p>Every write is verified: if anything that affects playback differs from the original, nothing is written.</p>';
+}
 function updateWrite() {
   armed = false;
+  renderSound();
   const n = data.categories.filter(c => selected.has(c.key)).reduce((a, c) => a + c.items.length, 0);
   $('#write').disabled = n === 0;
   $('#write').textContent = n ? `Write new version (${n} changes)` : 'Nothing selected';
@@ -218,7 +253,7 @@ async function write() {
   writeStatus('Writing new version, this can take 10–20 seconds…');
   try {
     const r = await api('/api/write', {path: data.path, categories: cats});
-    writeStatus(`Done: wrote “${r.file}” (${r.changes} changes) next to the original.`, 'ok');
+    writeStatus(`Done: wrote “${r.file}” (${r.changes} changes) next to the original. Sound check passed.`, 'ok');
     status(`Wrote ${r.file}`, 'ok');
     const p = projects[$('#project').value];
     if (p && data.path.startsWith(p.dir)) p.versions.unshift(r.file);
@@ -227,6 +262,9 @@ async function write() {
 }
 
 $('#project').onchange = () => { $('#path').value = ''; fillVersions(); };
+$('#folder').onchange = () => fillProjects($('#project').value);
+$('#search').oninput = () => fillProjects($('#project').value);
+$('#search').onkeydown = e => { if (e.key === 'Enter') analyze(); };
 $('#load').onclick = analyze;
 $('#write').onclick = write;
 $('#path').onkeydown = e => { if (e.key === 'Enter') analyze(); };

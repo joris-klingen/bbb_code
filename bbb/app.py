@@ -50,9 +50,10 @@ def analysis(path):
     data = dict(
         path=path, file=os.path.basename(path), live=root.get('Creator'),
         categories=[dict(key=k, title=t, default=on, description=d,
+                         sound=restyle.SOUND[k][0], sound_text=restyle.SOUND[k][1],
                          items=[dict(track=c.track, detail=c.detail) for c in plan.changes if c.category == k])
                     for k, (t, on, d) in restyle.CATEGORIES.items()],
-        notes=plan.notes, tracks=plan.tracks, next=os.path.basename(restyle.next_version_path(path)))
+        notes=plan.notes, tracks=plan.tracks, warnings=plan.warnings, next=os.path.basename(restyle.next_version_path(path)))
     with _lock:
         _cache[key] = data
     return data
@@ -84,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/write':
                 cats = [c for c in req['categories'] if c in restyle.CATEGORIES]
                 out, done = restyle.restyle_file(path, cats)
-                return self._send(200, dict(out=out, file=os.path.basename(out), changes=len(done)))
+                return self._send(200, dict(out=out, file=os.path.basename(out), changes=len(done), sound_check=True))
             self._send(404, {'error': 'not found'})
         except Exception as e:  # report to the page instead of dropping the connection
             self._send(400, {'error': str(e)})
