@@ -21,7 +21,8 @@ is from the template, and restyle a selection in one go). Every write is verifie
 same as the original; if anything that affects playback differs, nothing is written.
 
 Or restyle from the command line. Without `--write` it only reports; with `--write` it saves
-the next version next to the original, e.g. `song 2.5.als` -> `song 2.6 (restyle).als`.
+a new version after the newest one in the folder, e.g. `song 2.5.als` with `song 2.6.als`
+present -> `song 2.7 (restyle).als`.
 `--only` picks categories (default: the ones that are on by default in the app):
 
     python3 -m bbb.restyle "../../c_opzetjes/my song Project/my song 2.5 (harmonics).als" --write

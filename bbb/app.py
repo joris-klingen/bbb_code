@@ -55,7 +55,8 @@ def analyze_path(path):
         path=path, file=os.path.basename(path), live=root.get('Creator'), mtime=os.path.getmtime(path),
         categories=[dict(key=k, title=t, default=on, description=d,
                          sound=restyle.SOUND[k][0], sound_text=restyle.SOUND[k][1],
-                         items=[dict(track=c.track, detail=c.detail) for c in plan.changes if c.category == k])
+                         items=[dict(track=c.track, id=c.track_id, detail=c.detail, effect=c.effect)
+                                for c in plan.changes if c.category == k])
                     for k, (t, on, d) in restyle.CATEGORIES.items()],
         notes=plan.notes, tracks=plan.tracks, warnings=plan.warnings,
         next=os.path.basename(restyle.next_version_path(path)))

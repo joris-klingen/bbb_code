@@ -101,6 +101,9 @@ class Change:
     track_id: str       # '' when not about one track
     detail: str
     apply: Callable = field(repr=False)
+    # what it does to the track list, for the before/after view: name / color / solo / clips /
+    # lanes (delta) / order (list of track ids, top to bottom)
+    effect: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -148,7 +151,7 @@ def _name_generic(generic, block, add, setter):
         numbered = len(ts) > 1 or base in existing
         for n, t in enumerate(ts, 1):
             new = f'{base} {n}' if numbered else base
-            add('rec_names', t, f'→ {new}', setter(als.set_name, t, new))
+            add('rec_names', t, f'→ {new}', setter(als.set_name, t, new), {'name': new})
 
 
 def analyze(root):
@@ -165,8 +168,8 @@ def analyze(root):
             g = als.group_id(by_id[g])
         return f"#{pos[t.get('Id')]} " + ' › '.join(reversed(parts))
 
-    def add(cat, t, detail, fn):
-        changes.append(Change(cat, path(t), t.get('Id'), detail, fn))
+    def add(cat, t, detail, fn, effect=None):
+        changes.append(Change(cat, path(t), t.get('Id'), detail, fn, effect or {}))
 
     def setter(fn, *args):
         return lambda: fn(*args)
@@ -182,9 +185,10 @@ def analyze(root):
         g = _group(als.name(top)) if als.is_group(top) else None
         if h:
             if als.name(top) != h[0]:
-                add('group_names', top, f'→ {h[0]}', setter(als.set_name, top, h[0]))
+                add('group_names', top, f'→ {h[0]}', setter(als.set_name, top, h[0]), {'name': h[0]})
             if als.color(top) != h[1]:
-                add('track_colors', top, f'color {als.color(top)} → {h[1]}', setter(als.set_color, top, h[1]))
+                add('track_colors', top, f'color {als.color(top)} → {h[1]}', setter(als.set_color, top, h[1]),
+                    {'color': h[1]})
             keyed.append(((0, [x[0] for x in spec.HELPERS].index(h[0])), i, block))
             continue
         if not g:
@@ -194,17 +198,19 @@ def analyze(root):
             continue
         keyed.append(((3 if g.name in spec.LAST_GROUPS else 1, spec.GROUPS.index(g)), i, block))
         if als.name(top) != g.name:
-            add('group_names', top, f'→ {g.name}', setter(als.set_name, top, g.name))
+            add('group_names', top, f'→ {g.name}', setter(als.set_name, top, g.name), {'name': g.name})
         if als.solo_key(top) != (g.solo or ''):
             add('solo_keys', top, f'key {als.solo_key(top) or "none"} → {g.solo or "none"}',
-                setter(als.set_solo_key, top, g.solo))
+                setter(als.set_solo_key, top, g.solo), {'solo': g.solo or ''})
         for t in block:
             if als.color(t) != g.color:
-                add('track_colors', t, f'color {als.color(t)} → {g.color}', setter(als.set_color, t, g.color))
+                add('track_colors', t, f'color {als.color(t)} → {g.color}', setter(als.set_color, t, g.color),
+                    {'color': g.color})
             clips = [c for c in t.iter() if c.tag in als.CLIP_TAGS and als.val(c, 'Color') != str(g.color)]
             if clips:
                 add('clip_colors', t, f'{len(clips)} clips → {g.color}',
-                    setter(lambda cs, col: [als.set_val(c, 'Color', col) for c in cs], clips, g.color))
+                    setter(lambda cs, col: [als.set_val(c, 'Color', col) for c in cs], clips, g.color),
+                    {'clips': len(clips)})
             if t is top or g.name in spec.KEEP_NAMES_IN:
                 continue
             name, user = als.name(t), als.val(t, 'Name/UserName', '')
@@ -217,7 +223,8 @@ def analyze(root):
                 else:
                     generic.append((t, rec_base_name(t, g, by_id)))
             elif m and not user:
-                add('auto_names', t, f'→ {m.group(1).lower()}', setter(als.set_name, t, m.group(1).lower()))
+                add('auto_names', t, f'→ {m.group(1).lower()}', setter(als.set_name, t, m.group(1).lower()),
+                    {'name': m.group(1).lower()})
         _name_generic(generic, block, add, setter)
 
     seen = set()
@@ -243,7 +250,8 @@ def analyze(root):
             for t in order:
                 tel.append(t)
             als._retail(tel, inner, last)
-        changes.append(Change('order', 'top level', '', ' | '.join(als.name(t) for t in new_tops), reorder))
+        changes.append(Change('order', 'top level', '', ' | '.join(als.name(t) for t in new_tops), reorder,
+                              {'order': [t.get('Id') for t in order]}))
 
     # --- returns ----------------------------------------------------------------
     for t in tracks:
@@ -259,9 +267,9 @@ def analyze(root):
             def rn(t=t, n=r[0], eff=letter + r[0]):
                 als.set_val(t, 'Name/UserName', n)
                 als.set_val(t, 'Name/EffectiveName', eff)
-            add('returns', t, f'→ {letter}{r[0]}', rn)
+            add('returns', t, f'→ {letter}{r[0]}', rn, {'name': letter + r[0]})
         if als.color(t) != r[1]:
-            add('returns', t, f'color {als.color(t)} → {r[1]}', setter(als.set_color, t, r[1]))
+            add('returns', t, f'color {als.color(t)} → {r[1]}', setter(als.set_color, t, r[1]), {'color': r[1]})
 
     # --- take lanes -----------------------------------------------------------------
     first_seen = {}   # lane fingerprint -> track path where it first occurs
@@ -291,11 +299,12 @@ def analyze(root):
             if len(inner):
                 inner[-1].tail = tail
         if empty:
-            add('empty_lanes', t, f'{len(empty)} of {len(lanes)} lanes', setter(remove, inner, empty))
+            add('empty_lanes', t, f'{len(empty)} of {len(lanes)} lanes', setter(remove, inner, empty),
+                {'lanes': -len(empty)})
         if dups:
             where = sorted({w for _, w in dups})
             add('dup_lanes', t, f'{len(dups)} of {len(lanes)} lanes, same as on: ' + '; '.join(where),
-                setter(remove, inner, [l for l, _ in dups]))
+                setter(remove, inner, [l for l, _ in dups]), {'lanes': -len(dups)})
 
     # --- structure for display ----------------------------------------------------------
     flagged = {}
@@ -310,12 +319,12 @@ def analyze(root):
     warnings = []
     m4l = sum(1 for e in root.iter() if e.tag.startswith('MxDevice'))
     if m4l:
-        warnings.append(dict(categories=list(NAME_CATEGORIES),
+        warnings.append(dict(kind='m4l', categories=list(NAME_CATEGORIES),
                              text=f'This set has {m4l} Max for Live device(s). Some refer to tracks by name; '
                                   'check them after renaming.'))
     creator = root.get('Creator', '')
     if 'Live 11' in creator or 'Live 10' in creator:
-        warnings.append(dict(categories=[], text=f'Saved by {creator}. The new version is unchanged in sound, '
+        warnings.append(dict(kind='live_version', categories=[], text=f'Saved by {creator}. The new version is unchanged in sound, '
                                                  'but saving it from Live 12 upgrades it for good.'))
     return Plan(changes, notes, struct, warnings)
 
@@ -333,11 +342,24 @@ def apply(root, plan, categories):
     return done
 
 
+VERSION = re.compile(r'^(.*?)(\d+)\.(\d+)(?!\d)')   # 'my song 2.5 (harmonics)' -> 2.5
+
+
 def next_version_path(path):
+    """Next free version after the newest version of this song in its folder, e.g. 2.5 with 2.6
+    and 2.6 (restyle) present -> 2.7 (restyle)."""
     d, f = os.path.split(path)
     stem = f[:-4]
-    m = re.match(r'^(.*?)(\d+)\.(\d+)(.*)$', stem)
-    base = f'{m.group(1)}{m.group(2)}.{int(m.group(3)) + 1}' if m else f'{stem} 1.1'
+    m = VERSION.match(stem)
+    if m:
+        prefix = m.group(1)
+        versions = [(int(x.group(2)), int(x.group(3))) for x in
+                    (VERSION.match(os.path.basename(o)[:-4]) for o in os.listdir(d) if o.endswith('.als'))
+                    if x and x.group(1).lower() == prefix.lower()]
+        major, minor = max(versions)
+        base = f'{prefix}{major}.{minor + 1}'
+    else:
+        base = f'{stem} 1.1'
     out = os.path.join(d, base + ' (restyle).als')
     n = 2
     while os.path.exists(out):
