@@ -30,6 +30,8 @@ GROUPS = [
     Group('GUIT ACC',  2, '6', 'GUIT', optional=True, aliases=['guit acc', 'acc guitar']),  # '5' when not really distinct
     Group('VOX LEAD',  7, '7', 'VOX LEAD', aliases=['vox lead', 'vox main', 'vox', 'vocals']),
     Group('BACKINGS',  5, '8', 'BACKINGS', aliases=['backings', 'vox backing', 'vox backings', 'vox back']),
+    # Ideas, old takes and alternatives go here instead of being deleted. Always last, folded.
+    Group('ARCHIVE',  69, None, 'ARCHIVE', aliases=['archive', 'bin', 'old', 'unused']),
 ]
 
 # Naming rule for tracks called 'rec', 'NN-Audio', 'NN-MIDI': <prefix> + the subgroup names,
@@ -68,7 +70,7 @@ RETURNS = [
     ('verb', 19),      # Decapitator -> Pro-R 2, hall
     ('delay', 25),     # EchoBoy, synced
     ('drum par', 2),   # Devil-Loc Deluxe
-    ('vox par', 3),    # SCHEPS rack: DeEsser -> Pultec -> LA-2A -> Pultec -> DeEsser
+    ('scheps', 3),     # SCHEPS rack (parallel vocal chain): DeEsser -> Pultec -> LA-2A -> Pultec -> DeEsser
 ]
 
 # Default send levels in dB, set on the top-level groups. Optional groups use their family's.
@@ -77,7 +79,7 @@ SENDS = {
     'KEYS':     {'amb': -20, 'verb': -20},
     'SYNTHS':   {'amb': -20, 'verb': -20, 'delay': -25},
     'GUIT':     {'amb': -20, 'delay': -25},
-    'VOX LEAD': {'amb': -20, 'verb': -20, 'delay': -25, 'vox par': -10},
+    'VOX LEAD': {'amb': -20, 'verb': -20, 'delay': -25, 'scheps': -10},
     'BACKINGS': {'amb': -20, 'verb': -20},
 }
 
@@ -87,6 +89,12 @@ EXCLUDED_PLUGINS = ('Pro-Q',)   # matches Pro-Q 3 and Pro-Q 4
 
 def excluded(device_name):
     return device_name.startswith(EXCLUDED_PLUGINS)
+
+# Groups whose tracks keep their own names (no 'rec' / auto renaming inside).
+KEEP_NAMES_IN = ['ARCHIVE']
+
+# Groups that always come last, even after top-level tracks/groups that are not in the template.
+LAST_GROUPS = ['ARCHIVE']
 
 # Groups that are left alone entirely.
 IGNORE_GROUPS = ['live rig']

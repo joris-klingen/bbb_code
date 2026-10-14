@@ -91,7 +91,7 @@ def rec_base_name(t, group, by_id):
 def has_clips(t):
     return any(e.tag in als.CLIP_TAGS for e in t.iter())
 RETURN_ALIASES = {'amb': ['ambience', 'amb'], 'verb': ['long verb', 'verb', 'reverb'], 'delay': ['delay'],
-                  'drum par': ['dums par', 'drums par', 'drum par'], 'vox par': ['scheps', 'vox par']}
+                  'drum par': ['dums par', 'drums par', 'drum par'], 'scheps': ['scheps', 'vox par']}
 
 
 @dataclass
@@ -192,11 +192,12 @@ def analyze(root):
             notes.append(f'Top-level {kind} “{als.name(top)}” is not in the template; left as is, placed after the groups.')
             keyed.append(((2, 0), i, block))
             continue
-        keyed.append(((1, spec.GROUPS.index(g)), i, block))
+        keyed.append(((3 if g.name in spec.LAST_GROUPS else 1, spec.GROUPS.index(g)), i, block))
         if als.name(top) != g.name:
             add('group_names', top, f'→ {g.name}', setter(als.set_name, top, g.name))
-        if als.solo_key(top) != g.solo:
-            add('solo_keys', top, f'key {als.solo_key(top) or "none"} → {g.solo}', setter(als.set_solo_key, top, g.solo))
+        if als.solo_key(top) != (g.solo or ''):
+            add('solo_keys', top, f'key {als.solo_key(top) or "none"} → {g.solo or "none"}',
+                setter(als.set_solo_key, top, g.solo))
         for t in block:
             if als.color(t) != g.color:
                 add('track_colors', t, f'color {als.color(t)} → {g.color}', setter(als.set_color, t, g.color))
@@ -204,7 +205,7 @@ def analyze(root):
             if clips:
                 add('clip_colors', t, f'{len(clips)} clips → {g.color}',
                     setter(lambda cs, col: [als.set_val(c, 'Color', col) for c in cs], clips, g.color))
-            if t is top:
+            if t is top or g.name in spec.KEEP_NAMES_IN:
                 continue
             name, user = als.name(t), als.val(t, 'Name/UserName', '')
             m = AUTO_NAME.match(name)
@@ -222,9 +223,9 @@ def analyze(root):
     seen = set()
     for key, _, block in keyed:
         n = als.name(block[0]).lower()
-        if key[0] == 1 and _group(n).name in seen:
+        if key[0] in (1, 3) and _group(n).name in seen:
             notes.append(f'More than one top-level group maps to {_group(n).name}.')
-        if key[0] == 1:
+        if key[0] in (1, 3):
             seen.add(_group(n).name)
 
     # --- order ------------------------------------------------------------------

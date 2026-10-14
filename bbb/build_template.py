@@ -22,7 +22,7 @@ from . import als, spec
 BASE_HELPERS = {'255': 'length', '130': 'Parts'}
 BASE_GROUPS = {'46': 'DRUMS', '42': 'BASS', '49': 'KEYS', '44': 'SYNTHS', '52': 'GUIT',
                '80': 'VOX LEAD', '270': 'BACKINGS'}
-BASE_RETURNS = {'2': 'amb', '3': 'verb', '239': 'drum par', '271': 'vox par'}
+BASE_RETURNS = {'2': 'amb', '3': 'verb', '239': 'drum par', '271': 'scheps'}
 NEW_RETURN = ('delay', '325', 'EchoBoy')  # name, base track to take the plugin from, plugin
 # Children per group: (base track id, name). Under a group with subgroups, children are
 # keyed by subgroup name; the same base id may be used twice (the second one is cloned).
