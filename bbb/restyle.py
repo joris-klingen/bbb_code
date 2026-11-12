@@ -288,7 +288,7 @@ def analyze(root):
                 if free:
                     empty.append(lane)
                 continue
-            fp = frozenset((als.clip_source(c), c.get('Time')) for c in clips)
+            fp = frozenset(als.clip_fingerprint(c) for c in clips)
             if fp in first_seen and free:
                 dups.append((lane, first_seen[fp]))
             first_seen.setdefault(fp, path(t))
@@ -395,21 +395,32 @@ def restyle_file(path, categories):
         raise ValueError('sound check failed, nothing written; changed: ' + ', '.join(diffs))
     out = next_version_path(path)
     tmp = out + '.partial'
-    als.save(root, tmp)
-    written = als.load(tmp)  # verify what actually landed on disk
-    diffs = als.compare_sound(before, als.sound_fingerprint(written), written)
-    if diffs:
-        os.remove(tmp)
-        raise ValueError('sound check of the written file failed, nothing kept; changed: ' + ', '.join(diffs))
-    os.rename(tmp, out)
+    try:
+        als.save(root, tmp)
+        written = als.load(tmp)  # verify what actually landed on disk
+        diffs = als.compare_sound(before, als.sound_fingerprint(written), written)
+        if diffs:
+            raise ValueError('sound check of the written file failed, nothing kept; changed: ' + ', '.join(diffs))
+        os.rename(tmp, out)
+    finally:
+        if os.path.exists(tmp):   # a failed write or check leaves no half file behind
+            os.remove(tmp)
     return out, done
 
 
 def main():
-    path = sys.argv[1]
+    args = sys.argv[1:]
+    if not args or args[0].startswith('-'):
+        sys.exit(__doc__.strip())
+    path = args[0]
     cats = [k for k, (_, on, _) in CATEGORIES.items() if on]
-    if '--only' in sys.argv:
-        cats = sys.argv[sys.argv.index('--only') + 1].split(',')
+    if '--only' in args:
+        cats = args[args.index('--only') + 1:][:1]
+        cats = cats[0].split(',') if cats else []
+        unknown = [c for c in cats if c not in CATEGORIES]
+        if unknown or not cats:
+            sys.exit(f"--only takes categories from: {', '.join(CATEGORIES)}"
+                     + (f" (unknown: {', '.join(unknown)})" if unknown else ''))
     root = als.load(path)
     plan = analyze(root)
     for c in plan.changes:

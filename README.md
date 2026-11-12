@@ -9,6 +9,10 @@ solo hotkeys and (later) take-lane cleanup. Python 3.9+, standard library only.
   solo keys, returns, and optional take-lane cleanup (empty / duplicate, unreferenced lanes).
 - `bbb/app.py` + `bbb/app.html` — local web app around restyle: load an `.als`, see the
   differences with the template, pick categories, write a new version.
+- `bbb/facts.py` — read only: what a set is, as JSON (tempo, time signature, song parts from the
+  `parts` track, locators, tracks with their plugins, audio files). `python3 -m bbb.facts song.als`
+- `tests/` — `python3 -m unittest discover -s tests -t .` Runs on small synthetic sets built in
+  `tests/fixture.py`; real sets stay out of the repo.
 - `bbb/build_template.py` — one-off generator of the first template (now maintained by hand in
   `../bbb_ableton_template/BBB template Project`).
 
@@ -29,3 +33,6 @@ present -> `song 2.7 (restyle).als`.
     python3 -m bbb.restyle song.als --write --only group_names,solo_keys,track_colors
 
 Never write over a source `.als`; output always goes to a new file.
+
+The app looks for projects three folders above `bbb/` (the Bovenburen folder); set `BBB_ROOT` to
+point it somewhere else. It only answers its own page on localhost, not other websites.

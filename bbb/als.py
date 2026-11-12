@@ -8,8 +8,14 @@ XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>\n'
 
 
 def load(path):
-    with gzip.open(path) as f:
-        return ET.parse(f).getroot()
+    try:
+        with gzip.open(path) as f:
+            root = ET.parse(f).getroot()
+    except (gzip.BadGzipFile, EOFError, ET.ParseError) as e:
+        raise ValueError(f'not a readable Live set ({e}): {path}') from e
+    if root.find('LiveSet') is None:
+        raise ValueError(f'not a Live set (no LiveSet element): {path}')
+    return root
 
 
 def save(root, path):
@@ -332,9 +338,22 @@ def clip_source(c):
     """What a clip plays: the audio file, or a fingerprint of the MIDI notes."""
     if c.tag == 'AudioClip':
         return 'A:' + (val(c, 'SampleRef/FileRef/RelativePath') or val(c, 'SampleRef/FileRef/Path') or '?')
-    notes = sorted((val(kt, 'MidiKey'), n.get('Time'), n.get('Duration'))
+    notes = sorted((val(kt, 'MidiKey'), n.get('Time'), n.get('Duration'), n.get('Velocity'), n.get('IsEnabled'))
                    for kt in c.findall('Notes/KeyTracks/KeyTrack') for n in kt.findall('Notes/MidiNoteEvent'))
     return 'M:' + hashlib.md5(repr(notes).encode()).hexdigest()
+
+
+# Which part of its source a clip plays, and how. Two audio clips of the same file are only
+# the same take when these agree too (one long recording cut into takes shares the file).
+_CLIP_PLAYBACK = ('CurrentStart', 'CurrentEnd', 'Loop/LoopStart', 'Loop/LoopEnd', 'Loop/StartRelative',
+                  'Loop/LoopOn', 'Loop/OutMarker', 'Loop/HiddenLoopStart', 'Loop/HiddenLoopEnd',
+                  'Disabled', 'IsWarped', 'WarpMode', 'PitchCoarse', 'PitchFine', 'SampleVolume')
+
+
+def clip_fingerprint(c):
+    """Identity of a clip as a take: its source, its place and what it plays of the source."""
+    warp = tuple((m.get('SecTime'), m.get('BeatTime')) for m in c.findall('WarpMarkers/WarpMarker'))
+    return (clip_source(c), c.get('Time'), tuple(val(c, p) for p in _CLIP_PLAYBACK), warp)
 
 
 def take_lanes(t):

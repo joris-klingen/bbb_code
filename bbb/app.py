@@ -3,7 +3,8 @@
 Usage: python3 -m bbb.app [port]     then open http://localhost:8765
 
 Two views: one project at a time, or all projects in a folder (batch scan and batch restyle).
-Only listens on localhost, and only reads/writes .als files inside the Bovenburen folder.
+Only listens on localhost, only answers requests that come from its own page, and only
+reads/writes .als files inside the Bovenburen folder (BBB_ROOT overrides where that is).
 """
 import glob
 import json
@@ -18,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import als, restyle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BOVENBUREN = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
+BOVENBUREN = os.path.realpath(os.environ.get('BBB_ROOT') or os.path.join(HERE, '..', '..', '..'))
 PROJECT_DIRS = ['c_opzetjes', 'b_tracks', 'b1_tracks met Anna']
 WORKERS = 4   # each worker holds a whole parsed set in memory (up to ~1-2 GB for the biggest)
 
@@ -40,7 +41,7 @@ def list_projects():
 
 
 def check_path(path):
-    p = os.path.abspath(os.path.expanduser(path))
+    p = os.path.realpath(os.path.expanduser(path))   # realpath: a link may not lead outside the folder
     if not p.startswith(BOVENBUREN + os.sep) or not p.endswith('.als') or not os.path.isfile(p):
         raise ValueError(f'not an .als inside {BOVENBUREN}: {path}')
     return p
@@ -78,6 +79,8 @@ def pool():
 
 def remember(data):
     with _lock:
+        for key in [k for k in _cache if k[0] == data['path']]:   # drop analyses of older saves
+            del _cache[key]
         _cache[(data['path'], data['mtime'])] = data
 
 
@@ -154,7 +157,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _own_page(self):
+        """True when the request comes from this app's own page.
+
+        Any website can make the browser send requests to localhost. The Host check stops a
+        foreign domain that resolves to 127.0.0.1; for POST the Origin and the JSON content
+        type (which a foreign page cannot send without a preflight we never grant) stop the rest.
+        """
+        hosts = {f'{h}:{self.server.server_port}' for h in ('localhost', '127.0.0.1')}
+        if self.headers.get('Host') not in hosts:
+            return False
+        if self.command == 'POST':
+            origin = self.headers.get('Origin')
+            if origin is not None and origin not in {'http://' + h for h in hosts}:
+                return False
+            return self.headers.get('Content-Type', '').split(';')[0].strip() == 'application/json'
+        return True
+
     def do_GET(self):
+        if not self._own_page():
+            return self._send(403, {'error': 'forbidden'})
         if self.path in ('/', '/index.html'):
             with open(os.path.join(HERE, 'app.html'), 'rb') as f:
                 return self._send(200, f.read(), 'text/html; charset=utf-8')
@@ -169,6 +191,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {'error': 'not found'})
 
     def do_POST(self):
+        if not self._own_page():
+            return self._send(403, {'error': 'forbidden'})
         try:
             req = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
             if self.path == '/api/batch/scan':
