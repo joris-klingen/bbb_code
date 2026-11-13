@@ -95,7 +95,8 @@ class SetBuilder:
         return d
 
     def locator(self, time, name):
-        loc = ET.SubElement(self.locators, 'Locator', Id=self._id(), Time=str(time))
+        loc = ET.SubElement(self.locators, 'Locator', Id=self._id())
+        ET.SubElement(loc, 'Time', Value=str(time))   # Live writes it as a child, not an attribute
         ET.SubElement(loc, 'Name', Value=name)
         return loc
 

@@ -60,7 +60,7 @@ def sections(root):
 
 def locators(root):
     locs = als.liveset(root).findall('Locators/Locators/Locator')
-    return sorted((dict(time=float(l.get('Time')), name=als.val(l, 'Name', '')) for l in locs),
+    return sorted((dict(time=float(als.val(l, 'Time', l.get('Time'))), name=als.val(l, 'Name', '')) for l in locs),
                   key=lambda l: l['time'])
 
 
