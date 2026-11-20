@@ -3,3 +3,4 @@ Icon
 __pycache__/
 *.pyc
 *.als
+testsets/
