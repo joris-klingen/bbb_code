@@ -457,5 +457,8 @@ def validate(root):
         g = group_id(t)
         if g != '-1' and g not in seen:
             problems.append(f'track {name(t)!r} appears before its group {g}')
+        if g == '-1' and val(t, 'DeviceChain/AudioOutputRouting/Target') == 'AudioOut/GroupTrack':
+            # Live crashes on loading this
+            problems.append(f'track {name(t)!r} sends its audio to a group but is in none')
         seen.add(t.get('Id'))
     return problems

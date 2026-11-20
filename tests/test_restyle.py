@@ -82,6 +82,17 @@ class Apply(unittest.TestCase):
         self.assertEqual(als.compare_sound(before, als.sound_fingerprint(root), root), ["track 'rec'"])
 
 
+class Validate(unittest.TestCase):
+    def test_a_top_level_track_that_sends_to_a_group_is_a_problem(self):
+        b = SetBuilder()                    # Live crashes on loading such a set
+        t = b.track('Audio', 'fx')
+        routing = als.ET.SubElement(t.find('DeviceChain'), 'AudioOutputRouting')
+        target = als.ET.SubElement(routing, 'Target', Value='AudioOut/GroupTrack')
+        self.assertEqual(als.validate(b.root), ["track 'fx' sends its audio to a group but is in none"])
+        target.set('Value', 'AudioOut/Main')
+        self.assertEqual(als.validate(b.root), [])
+
+
 class Files(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
