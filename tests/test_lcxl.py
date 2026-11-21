@@ -28,6 +28,7 @@ class Track:
         self.name, self.group_track = name, group_track
         self.solo = self.mute = self.arm = False
         self.can_be_armed = True
+        self.is_foldable = False                # True for a group track
         self.output_meter_level = 0.0
         self.mixer_device = Mixer()
 
@@ -39,12 +40,25 @@ class Song:
         self.is_playing, self.current_song_time, self.cue_points = False, 0.0, []
         self.signature_numerator, self.signature_denominator = 4, 4
         self.record_mode, self.started = False, 0
+        self.tempo, self.time_listeners = 120.0, []
+
+    def current_song_time_has_listener(self, f):
+        return f in self.time_listeners
+
+    def add_current_song_time_listener(self, f):
+        self.time_listeners.append(f)
+
+    def remove_current_song_time_listener(self, f):
+        self.time_listeners.remove(f)
 
     def jump_by(self, beats):
         self.current_song_time += beats
 
     def start_playing(self):
         self.is_playing, self.started = True, self.started + 1
+
+    def continue_playing(self):
+        self.is_playing, self.continued = True, getattr(self, 'continued', 0) + 1
 
     def stop_playing(self):
         self.is_playing = False
@@ -81,7 +95,9 @@ class Columns(unittest.TestCase):
 
     def test_column_six_is_all_the_rest(self):
         s, t, song, _, _ = rig('length', 'Parts', 'FX', 'DRUMS', 'strings', 'bass synth', 'acc guitar',
-                               'ARCHIVE', 'old', 'live rig')
+                               'ARCHIVE', 'old', 'live rig', 'rec')
+        for name in t:
+            t[name].is_foldable = name not in ('length', 'Parts', 'strings', 'rec')    # groups
         song.tracks.append(Track('vox fx', group_track=t['DRUMS']))     # inside a group: not top level
         cols = s.columns()
         self.assertEqual([x.name for x in cols[5]], ['acc guitar', 'strings', 'FX', 'bass synth'])
@@ -90,6 +106,7 @@ class Columns(unittest.TestCase):
         press(s, lcxl.SOLO_NOTES[5])
         self.assertTrue(all(t[n].solo for n in ['acc guitar', 'strings', 'FX', 'bass synth']))
         self.assertFalse(t['ARCHIVE'].solo or t['Parts'].solo or t['live rig'].solo or t['old'].solo)
+        self.assertFalse(t['rec'].solo)                     # a loose track is not 'the rest'
 
     def test_groups_by_name_and_alias_top_level_only(self):
         s, t, song, _, _ = rig('drums live', 'PERC', 'Vocals', 'length')
@@ -338,14 +355,78 @@ class Parts(unittest.TestCase):
         s.refresh()
         self.assertEqual(self.top(sent)[:4], [lcxl.RED_DIM, lcxl.AMBER_DIM, lcxl.RED, lcxl.LIME_DIM])
 
-    def test_while_playing_the_part_starts_on_the_next_bar_line(self):
-        s, _, song, _ = parts_rig()
+    def play_to(self, s, song, beat):
+        """The song plays on to `beat` (at 120: 2 beats a second), Live calling 20 times a second."""
+        while song.current_song_time < beat - 1e-9:
+            song.current_song_time = min(beat, song.current_song_time + 0.1)
+            s.now += 0.05
+            s.tick()
+            s.refresh()
+
+    def test_while_playing_the_part_waits_for_the_bar_line(self):
+        s, _, song, sent = parts_rig()
         song.is_playing, song.current_song_time = True, 21.5    # beat 2.5 of a bar in verse 1
         press(s, lcxl.PARTS_NOTE)
-        press(s, lcxl.SOLO_NOTES[3])                    # chorus at 48: the bar before it, same beat
-        self.assertEqual(song.current_song_time, 45.5)
-        press(s, lcxl.SOLO_NOTES[0])                    # intro at 0: no bar before it
-        self.assertEqual(song.current_song_time, 1.5)
+        press(s, lcxl.SOLO_NOTES[3])                    # chorus, at 48
+        self.assertEqual(song.current_song_time, 21.5)  # not yet
+        self.play_to(s, song, 23.8)
+        self.assertEqual(round(song.current_song_time, 6), 23.8)
+        seen = set()
+        for _ in range(8):                              # the pad of the chorus blinks meanwhile
+            s.now += 0.05
+            s.leds = {}
+            s.refresh()
+            seen.add(leds(sent)[lcxl.SOLO_LEDS[3]])
+        self.assertEqual(seen, {lcxl.RED, lcxl.OFF})
+        self.play_to(s, song, 23.9)                     # the last call before the line at 24
+        self.assertEqual(round(song.current_song_time, 6), 47.9)        # as far before the chorus
+        self.play_to(s, song, 52.0)
+        self.assertEqual(round(song.current_song_time, 6), 52.0)        # and it goes only once
+
+    def test_pressing_again_keeps_it_waiting_and_another_part_takes_over(self):
+        s, _, song, _ = parts_rig()
+        song.is_playing, song.current_song_time = True, 21.5
+        press(s, lcxl.PARTS_NOTE)
+        press(s, lcxl.SOLO_NOTES[3])
+        press(s, lcxl.SOLO_NOTES[3])                    # an impatient second press changes nothing
+        press(s, lcxl.SOLO_NOTES[0])                    # the intro instead, at 0: nothing before it
+        self.play_to(s, song, 23.8)
+        song.current_song_time = 23.9                   # the last call before the line at 24
+        s.now += 0.05
+        s.tick()
+        self.assertEqual(round(song.current_song_time, 6), 0.0)
+
+    def test_a_missed_bar_line_still_goes_and_stays_in_time(self):
+        s, _, song, _ = parts_rig()
+        song.is_playing, song.current_song_time = True, 21.5
+        press(s, lcxl.PARTS_NOTE)
+        press(s, lcxl.SOLO_NOTES[3])                    # chorus at 48, to go at the line at 24
+        self.play_to(s, song, 23.7)
+        song.current_song_time = 24.2                   # Live was busy: the next call is past the line
+        s.now += 0.25
+        s.tick()
+        self.assertEqual(round(song.current_song_time, 6), 48.2)        # as far into the chorus
+
+    def test_a_refused_jump_is_tried_again(self):
+        s, _, song, _ = parts_rig()
+        song.is_playing, song.current_song_time = True, 23.95
+        press(s, lcxl.PARTS_NOTE)
+        jump, song.jump_by = song.jump_by, lambda beats: (_ for _ in ()).throw(RuntimeError('not from here'))
+        with self.assertRaises(RuntimeError):
+            press(s, lcxl.SOLO_NOTES[3])                # Live refuses the change
+        song.jump_by = jump
+        s.now += 0.01
+        s.tick()
+        self.assertEqual(round(song.current_song_time, 6), 47.95)
+
+    def test_stopping_while_it_waits_goes_there_at_once(self):
+        s, _, song, _ = parts_rig()
+        song.is_playing, song.current_song_time = True, 21.5
+        press(s, lcxl.PARTS_NOTE)
+        press(s, lcxl.SOLO_NOTES[3])
+        song.is_playing = False
+        s.tick()
+        self.assertEqual(song.current_song_time, 48.0)
 
     def test_three_four_time(self):
         s, _, song, _ = parts_rig(bars=3)               # parts start every 12 beats
@@ -353,7 +434,8 @@ class Parts(unittest.TestCase):
         song.is_playing, song.current_song_time = True, 14.0    # beat 3 of a 3/4 bar
         press(s, lcxl.PARTS_NOTE)
         press(s, lcxl.SOLO_NOTES[2])                    # 'pre' at 24
-        self.assertEqual(song.current_song_time, 23.0)
+        self.play_to(s, song, 14.9)                     # the line is at 15
+        self.assertEqual(round(song.current_song_time, 6), 23.9)
 
     def test_locators_when_there_is_no_parts_track(self):
         s, _, song, sent, _ = rig('DRUMS')
@@ -384,6 +466,50 @@ class Arm(unittest.TestCase):
         song.tracks.remove(vox)                         # deleted in the meantime
         press(s, lcxl.ARM_NOTE)
         self.assertEqual((t['BASS'].arm, vox.arm), (True, False))
+
+    def test_a_greyed_out_arm_button_that_is_on_counts_too(self):
+        class Input:
+            def __init__(self, display_name):
+                self.display_name = display_name
+
+        class NoArm(Track):                             # a group: Live raises when asked
+            arm = property(lambda self: (_ for _ in ()).throw(RuntimeError('no arm state')),
+                           lambda self, on: None)
+
+        class Greyed(Track):                            # no input: Live will not change its arm
+            def __init__(self, name, inputs):
+                super().__init__(name)
+                self.available_input_routing_types = [Input(n) for n in inputs]
+                self.input_routing_type = self.available_input_routing_types[-1]
+                self.routed = []
+
+            def __setattr__(self, name, value):
+                if name == 'input_routing_type' and 'routed' in self.__dict__:
+                    self.routed.append(value.display_name)
+                if name == 'arm' and 'routed' in self.__dict__ and self.input_routing_type.display_name == 'No Input':
+                    raise RuntimeError('Track cannot be armed')
+                super().__setattr__(name, value)
+
+        s, t, song, sent, said = rig('KEYS')
+        logged = []
+        s.log = logged.append
+        group = NoArm('GUIT')
+        bass, stuck = Greyed('bass', ['Ext. In', 'Resampling', 'No Input']), Greyed('stuck', ['No Input'])
+        song.tracks[:0] = [group, bass, stuck]
+        bass.__dict__['arm'] = stuck.__dict__['arm'] = True
+        t['KEYS'].arm = True
+        s.refresh()
+        self.assertEqual(leds(sent)[lcxl.ARM_LED], lcxl.YELLOW)
+        press(s, lcxl.ARM_NOTE)
+        self.assertEqual((bass.arm, t['KEYS'].arm, stuck.arm), (False, False, True))
+        self.assertEqual(bass.routed, ['Ext. In', 'No Input'])          # another input, and back
+        self.assertEqual(said, ['Live will not disarm: stuck'])
+        self.assertEqual(len(logged), 2)                                # what Live said, for both
+        self.assertIn("disarm 'bass': done", logged[0])
+        self.assertIn("disarm 'stuck': NOT done", logged[1])
+        stuck.__dict__['arm'] = False
+        press(s, lcxl.ARM_NOTE)                                         # and armed again, the same way
+        self.assertEqual((bass.arm, t['KEYS'].arm, bass.input_routing_type.display_name), (True, True, 'No Input'))
 
     def test_only_the_last_ones_come_back(self):
         s, t, _, _, _ = rig('DRUMS', 'BASS')
@@ -436,7 +562,7 @@ class Lights(unittest.TestCase):
             return seen
 
         # a small swing high in Live's meter uses all the lights: hit, die away, hit
-        self.assertEqual(play('BASS', 0.70, 0.74, 0.72, 0.70, 0.74, 0.71),
+        self.assertEqual(play('BASS', 0.60, 0.74, 0.66, 0.60, 0.74, 0.61),
                          [(O, G, G), (G, G, G), (O, G, G), (O, O, G), (G, G, G), (O, O, G)])
         self.assertEqual(play('BASS', 0.0, 0.0), [(O, O, O), (O, O, O)])        # silence
         self.assertEqual(play('BASS', 0.3, 0.3, 0.3)[-1], (O, G, G))            # a steady sound

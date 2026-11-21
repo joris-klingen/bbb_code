@@ -17,10 +17,29 @@ class BBBGroups(ControlSurface):
     def __init__(self, c_instance):
         super().__init__(c_instance)
         self._surface = device.Surface(self.song, self._to_device, self.show_message)
-        self._ticks, self._lit = 0, 0.0
+        self._surface.log = lambda text: self.log_message('%s: %s' % (device.NAME, text))
+        self._ticks, self._lit, self._timer = 0, 0.0, None
         self.log_message(device.NAME)
         self.show_message(device.NAME)
         self._safely(self._surface.start)
+        self._safely(self._start_timer)
+
+    def _start_timer(self):
+        """Live calls a script ten times a second, and its listeners may not change the song.
+        Going to a part on the bar line needs to act within a few hundredths of a second, so
+        that gets a timer of its own."""
+        self._timer = Live.Base.Timer(callback=self._timer_tick, interval=10, repeat=True)
+        self._timer.start()
+
+    def _timer_tick(self):
+        try:
+            self._surface.tick()
+        except Exception as e:      # not a hundred lines a second in the log: leave it to
+            self.log_message('%s: timer stopped: %r' % (device.NAME, e))    # update_display
+            self._timer.stop()
+
+    def _tick(self):
+        self._safely(self._surface.tick)
 
     def _to_device(self, data):
         self._c_instance.send_midi(tuple(data))
@@ -53,6 +72,7 @@ class BBBGroups(ControlSurface):
 
     def update_display(self):
         super().update_display()
+        self._tick()                            # also here, should the timer not run
         self._safely(self._surface.refresh)     # ten times a second: what was done in Live
         self._ticks += 1
         if self._ticks % 10 == 1:
@@ -68,7 +88,7 @@ class BBBGroups(ControlSurface):
 
     def _meter_moved(self):
         now = time.monotonic()
-        if now - self._lit >= 0.03:             # at most some thirty times a second
+        if now - self._lit >= 0.015:            # at most some sixty times a second
             self._lit = now
             self._safely(self._surface.refresh)
 
@@ -78,6 +98,8 @@ class BBBGroups(ControlSurface):
                 t.remove_output_meter_level_listener(self._meter_moved)
 
     def disconnect(self):
+        if self._timer is not None:
+            self._safely(self._timer.stop)
         self._safely(self._unwatch_meters)
         self._safely(self._surface.stop)
         super().disconnect()

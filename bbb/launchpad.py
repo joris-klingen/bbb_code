@@ -5,8 +5,9 @@ next to their row:
 
     top buttons   up / down = other parts (more than 24), left / right = previous / next part
     row 1-2       the parts of the song, in the color of their clip; a press goes to the part
+                  (while playing: at the next bar line, the pad blinks until then)
     row 3         empty (parts 17-24 in a long song)
-    row 4         play, stop, -, record, -, punch in, loop, punch out          | click
+    row 4         play / pause, stop, -, record, -, punch in, loop, punch out  | click
     row 5         empty
     row 6         activity: green with the signal; red when a track in it is armed | disarm all / arm again
     row 7         solo (blue)                                                  | unsolo all
@@ -31,6 +32,7 @@ NAME = 'BBB Groups: Launchpad Mini'
 SYSEX = (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D)
 PROGRAMMER_MODE, LIVE_MODE = SYSEX + (0x0E, 0x01, 0xF7), SYSEX + (0x0E, 0x00, 0xF7)
 SET_LEDS, RGB = 0x03, 0x03       # one message for many lights: (RGB, light, r, g, b) each, 0-127
+FULL_BRIGHTNESS = SYSEX + (0x08, 0x7F, 0xF7)    # the device's own brightness setting, to the top
 
 
 def pad(row, col):
@@ -51,24 +53,35 @@ UP, DOWN, LEFT, RIGHT = 91, 92, 93, 94          # the round buttons above the pa
 LIGHTS = ([pad(row, col) for row in range(1, 9) for col in range(1, 10)] + list(range(91, 99)))
 
 OFF = (0, 0, 0)
-GREEN, GREEN_DIM = (0, 127, 0), (0, 14, 0)
-RED, RED_DIM = (127, 0, 0), (18, 0, 0)
-AMBER, AMBER_DIM = (127, 70, 0), (18, 10, 0)
-BLUE, BLUE_DIM = (10, 40, 127), (0, 5, 22)
-WHITE_DIM = (16, 16, 16)
-MUTE_ON, MUTE_SILENCED = (90, 50, 0), (16, 9, 0)    # heard / silenced by a solo elsewhere
+# 'Dim' is about a third of full: clearly there in a lit room, clearly less than on.
+GREEN, GREEN_DIM = (0, 127, 0), (0, 36, 0)
+RED, RED_DIM = (127, 0, 0), (42, 0, 0)
+AMBER, AMBER_DIM = (127, 70, 0), (44, 24, 0)
+BLUE, BLUE_DIM = (10, 40, 127), (0, 12, 56)
+WHITE_DIM = (40, 40, 40)
+MUTE_ON, MUTE_SILENCED = (127, 70, 0), (40, 22, 0)  # heard / silenced by a solo elsewhere
 # Parts: the color of the clip, as bright as it goes where the song is, dimmed elsewhere.
-PART_BRIGHT, PART_DIM = 127, 26
+PART_BRIGHT, PART_DIM = 127, 44
+# A screen color sent as it is looks washed out on the pads: the small parts of a color show far
+# too bright on LEDs (Live's red, which has some green and blue in it, turns pink). Raising every
+# part to this power, relative to the strongest, brings the pad back to the color on screen.
+LED_GAMMA = 2.4
 # A locator has no color: by the kind of part (spec.part_kind), None = everything else.
 KIND_COLORS = {'verse': (0, 255, 0), 'chorus': (255, 60, 0), 'intro': (120, 150, 190),
                'outro': (120, 150, 190), None: (160, 90, 255)}
 # Activity: from this brightness (silent but armed, or the bottom of the swing) to full.
-ACTIVITY_LOW, ARMED_LOW = 6, 18
+ACTIVITY_LOW, ARMED_LOW = 6, 40
+ACTIVITY_CURVE = 2.0     # above 1: only the top of the swing is bright, so hits stand out
+
+
+def glow(low, activity):
+    """Brightness of an activity pad: `low` at the bottom of the swing, full at the top."""
+    return int(round(low + (127 - low) * activity[0] ** ACTIVITY_CURVE))
 
 
 def part_color(color, name, playing):
     """(r, g, b) for a part: its clip color (0xRRGGBB) or, without one, the color of its kind,
-    brought to the brightness for playing or not playing while keeping the hue."""
+    brought to the brightness for playing or not playing and corrected for the LEDs."""
     if color is None:
         r, g, b = KIND_COLORS[spec.part_kind(name)]
     else:
@@ -77,7 +90,7 @@ def part_color(color, name, playing):
     if top == 0:
         r = g = b = top = 1         # a black clip: grey, so the pad is still there
     full = PART_BRIGHT if playing else PART_DIM
-    return tuple(max(1 if x else 0, int(round(x * full / float(top)))) for x in (r, g, b))
+    return tuple(int(round(full * (x / float(top)) ** LED_GAMMA)) for x in (r, g, b))
 
 
 class Surface(groups.Groups):
@@ -86,6 +99,7 @@ class Surface(groups.Groups):
         super().__init__(song, send, message, clock)
         self.leds = {}                       # light -> (r, g, b) last sent
         self.page, self.playing_part = 0, None
+        self.from_start = False              # after Stop: the next Play starts where Live starts
 
     # --- from the device ---
 
@@ -100,21 +114,29 @@ class Surface(groups.Groups):
             self.button(number)
         else:
             return
+        self.tick()
         self.refresh()
 
     def pad(self, number):
         song = self.song()
         if number in PART_PADS:
+            self.from_start = False          # play from the part that was chosen
             self.go_to_part(self.page * len(PART_PADS) + PART_PADS.index(number))
         elif number in SOLO_PADS:
             self.toggle(SOLO_PADS.index(number), 'solo')
         elif number in MUTE_PADS:
             self.toggle(MUTE_PADS.index(number), 'mute')
-        elif number == PLAY:
-            if not song.is_playing:
+        elif number == PLAY:                 # pause and go on from there, as shift + space
+            if song.is_playing:
+                song.stop_playing()
+            elif self.from_start:
                 song.start_playing()
-        elif number == STOP:
-            song.stop_playing()
+            else:
+                song.continue_playing()
+            self.from_start = False
+        elif number == STOP:                 # as the space bar: the next Play starts from the
+            song.stop_playing()              # start marker again
+            self.from_start = True
         elif number == RECORD:
             song.record_mode = not song.record_mode
         elif number in SONG_PADS:
@@ -132,6 +154,7 @@ class Surface(groups.Groups):
         elif number == UNMUTE:
             self.unmute_all()
         elif number in (LEFT, RIGHT):
+            self.from_start = False
             self.step_part(1 if number == RIGHT else -1)
         elif number in (UP, DOWN):
             self.page = min(self.pages() - 1, max(0, self.page + (1 if number == DOWN else -1)))
@@ -156,6 +179,8 @@ class Surface(groups.Groups):
             if index < len(parts):
                 name, _, color = parts[index]
                 leds[led] = part_color(color, name, index == playing)
+                if index == self.waiting_part():     # waits for the bar line
+                    leds[led] = part_color(color, name, True) if self.blink() else OFF
         if parts:
             leds[LEFT] = leds[RIGHT] = WHITE_DIM
         leds[UP] = WHITE_DIM if self.page else OFF
@@ -168,7 +193,7 @@ class Surface(groups.Groups):
             leds[led] = AMBER if getattr(song, what) else AMBER_DIM
         leds[CLICK] = AMBER if song.metronome else AMBER_DIM
         # groups
-        everything, heard, armed = self.everything(), self.heard(), self.armed()
+        heard, armed = self.heard(), self.armed()
         armed_in = [self.top(t) for t in armed]
         columns = self.columns()
         for i, (tracks, activity) in enumerate(zip(columns, self.activity(columns))):
@@ -182,17 +207,16 @@ class Surface(groups.Groups):
             else:
                 leds[MUTE_PADS[i]] = MUTE_ON
             if any(t in armed_in for t in tracks):       # red, also when silent
-                level = ARMED_LOW if activity is None else ARMED_LOW + (127 - ARMED_LOW) * activity[0]
-                leds[ACTIVITY_PADS[i]] = (int(round(level)), 0, 0)
+                leds[ACTIVITY_PADS[i]] = (ARMED_LOW if activity is None else glow(ARMED_LOW, activity), 0, 0)
             elif activity is not None:
-                leds[ACTIVITY_PADS[i]] = (0, int(round(ACTIVITY_LOW + (127 - ACTIVITY_LOW) * activity[0])), 0)
+                leds[ACTIVITY_PADS[i]] = (0, glow(ACTIVITY_LOW, activity), 0)
         leds[ARM] = RED if armed else OFF
         leds[UNSOLO] = BLUE if heard is not None else OFF
-        leds[UNMUTE] = AMBER if any(t.mute for t in everything) else OFF
+        leds[UNMUTE] = AMBER if any(t.mute for tracks in columns for t in tracks) else OFF
         return leds
 
     def refresh(self):
-        """Send the lights that changed. Called after every press and when levels move."""
+        """Send the lights that changed. Called after every press and as often as Live allows."""
         changed = [(k, v) for k, v in sorted(self.colors().items()) if self.leds.get(k) != v]
         if changed:
             self.leds.update(changed)
@@ -201,6 +225,7 @@ class Surface(groups.Groups):
     def start(self):
         """Take the device: Programmer mode, and light everything."""
         self.send(PROGRAMMER_MODE)
+        self.send(FULL_BRIGHTNESS)
         self.leds = {}
         self.refresh()
 

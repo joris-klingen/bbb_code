@@ -29,10 +29,11 @@ row 8  mute per group                                    unmute all
 
 - **Parts** (rows 1-2): one pad per part in the color of its clip on the Parts track (locators
   when there is no such track: by kind of part, `spec.part_kind`). The part that plays at full
-  brightness, the rest dimmed. A press goes to the part, in time while playing (same jump as on
-  the XL). More than 16 parts go on into row 3; more than 24: the top buttons page.
+  brightness, the rest dimmed. A press goes to the part; while playing at the next bar line, the pad
+  blinking until then. More than 16 parts go on into row 3; more than 24: the top buttons page.
 - **Row 3 and row 5** stay empty, to keep parts, transport and groups apart for the eye.
-- **Transport** (row 4): play (green while playing) and stop as two pads at the left; a gap;
+- **Transport** (row 4): play / pause (green while playing; goes on where it was) and stop (the next play starts
+  over, as the space bar) at the left; a gap;
   record (Live's arrangement record: dim red, bright while recording); a gap; punch in, loop,
   punch out in the order of Live's control bar, amber, dim when off.
 - **Activity** (row 6): one pad per group, its brightness following the signal within the
@@ -52,7 +53,7 @@ row 8  mute per group                                    unmute all
 - A group the set does not have: its column is dark in rows 6-8.
 - **Side buttons**: next to row 4 click; next to row 6 disarm all tracks / arm them again (red
   while anything is armed); next to row 7 unsolo all (lit while anything is soloed); next to
-  row 8 unmute all (lit while anything is muted). The other four stay dark.
+  row 8 unmute all groups (lit while a group is muted; tracks inside groups are left alone). The other four stay dark.
 - **Top buttons**: the arrows left / right = previous / next part. The others are free.
 
 ## How

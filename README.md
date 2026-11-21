@@ -42,8 +42,8 @@ Never write over a source `.als`; output always goes to a new file.
 
 Both controllers work on the same eight columns, one per solo key in `spec.py`: 1 DRUMS
 (+ PERC), 2 BASS, 3 KEYS (+ PIANO), 4 SYNTHS, 5 GUIT, 6 all the rest, 7 VOX LEAD, 8 BACKINGS.
-Column 6 is GUIT ACC, STRINGS and every other top-level track that is none of the groups (an
-FX track, say), but not `length`, `Parts`, the archive or `live rig`. Groups are found by name
+Column 6 is GUIT ACC, STRINGS and every other top-level group that is none of the groups (an
+FX group, say), but not the archive or `live rig`, and no single tracks (a loose `rec`). Groups are found by name
 among the top-level tracks, so it works in any set, restyled or not: the names and aliases
 restyle knows, and beyond those by the words in a name (`Vocals`, `vocs lead`, `BVs`,
 `Gtr acoustic`). The words are in `spec.py` (`WORDS`, and `PART_WORDS` for song parts).
@@ -67,16 +67,17 @@ groups in `spec.py`.
   and high of the last moments (three lights on a hit, one as it dies away), so they dance to
   the music whatever the level; two lights for a steady sound, none in silence, amber on top
   when it is loud. With the song stopped they go out at once, and only light while someone
-  plays. The `METER_` numbers in `bbb/groups.py` and `bbb/lcxl.py` set how lively it is.
+  plays. The `METER_` numbers in `bbb/groups.py` and `bbb/lcxl.py` set how lively it is (on the Launchpad also
+  `ACTIVITY_CURVE` in `bbb/launchpad.py`).
 - **Solo** (right side): unsolo everything, tracks inside groups and returns too. Lit while
   anything is soloed.
 - **Down** (right side): both button rows show the parts of the song instead of solo and mute
   (lit while they do), top row parts 1-8, bottom row 9-16. Parts are the clips on the `Parts`
   track, or the locators when there is none: verse green, chorus red, intro / outro yellow,
   the rest amber, bright where the song is (`Verse2`, `last chorus`, `refrein` count too; a
-  `pre-chorus` is not a chorus). A press goes to that part. While playing, the
-  playhead goes to the same beat in the bar before the part, so the beat goes on and the part
-  starts on the next bar line. **Up** shows the next sixteen parts (lit when there are more);
+  `pre-chorus` is not a chorus). A press goes to that part. While playing it waits for
+  the next bar line, as launching a clip does: the pad blinks until then (another part while
+  one waits takes its place). **Up** shows the next sixteen parts (lit when there are more);
   the rows follow the song.
 - **Device**: loop on / off. **Mute**: click on / off. **Left / Right**: punch in / out.
   Each is lit while on.
@@ -96,13 +97,13 @@ bottom, the round buttons at the right next to their row:
 
 | Row | Pads | Button at the right |
 |---|---|---|
-| 1-2 | the parts of the song in the color of their clip, bright where the song is; a press goes to the part (in time while playing, as on the XL) | |
+| 1-2 | the parts of the song in the color of their clip, bright where the song is; a press goes to the part (while playing: at the next bar line, the pad blinks until then) | |
 | 3 | empty; parts 17-24 of a long song | |
-| 4 | play, stop, –, record, –, punch in, loop, punch out | click |
+| 4 | play / pause (goes on where it was), stop (the next play starts over, as the space bar), –, record, –, punch in, loop, punch out | click |
 | 5 | empty | |
 | 6 | activity per group: green with the signal; red when a track in it is armed (dim red when silent) | disarm all / arm again |
 | 7 | solo (blue) | unsolo all |
-| 8 | mute (amber = on, dim = silenced by a solo, dark = muted) | unmute all |
+| 8 | mute (amber = on, dim = silenced by a solo, dark = muted) | unmute all groups (tracks muted inside a group stay muted) |
 
 The arrows above the pads: left / right = previous / next part, up / down = the other parts
 when there are more than 24. A column whose group is not in the set stays dark.

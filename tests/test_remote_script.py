@@ -25,6 +25,21 @@ class Instance:
 
 def stand_in_for_live(song, forwarded, logged):
     live = types.ModuleType('Live')
+    class Timer:
+        """Live.Base.Timer: calls back on its own, here when the test says so."""
+        made = []
+
+        def __init__(self, callback, interval, repeat):
+            self.callback, self.running = callback, False
+            Timer.made.append(self)
+
+        def start(self):
+            self.running = True
+
+        def stop(self):
+            self.running = False
+
+    live.Base = types.SimpleNamespace(Timer=Timer)
     live.MidiMap = types.SimpleNamespace(
         forward_midi_cc=lambda script, handle, channel, cc: forwarded.append(('cc', channel, cc)),
         forward_midi_note=lambda script, handle, channel, note: forwarded.append(('note', channel, note)))
@@ -98,6 +113,9 @@ class RemoteScript(unittest.TestCase):
                     self.assertEqual(len(drums.listeners), 1)
                     drums.output_meter_level = 0.5
                     drums.listeners[0]()                            # Live: the level moved
+                    (timer,) = fakes['Live'].Base.Timer.made
+                    self.assertTrue(timer.running)
+                    timer.callback()                                # and the timer for the bar line
                     script.disconnect()
                 finally:
                     sys.path.remove(d)
@@ -106,6 +124,7 @@ class RemoteScript(unittest.TestCase):
             self.assertEqual(logged, [logged[0]], package)          # its name, and no errors
             self.assertTrue(drums.solo, package)
             self.assertEqual(drums.listeners, [], package)
+            self.assertFalse(timer.running, package)
             self.assertTrue(sent and forwarded, package)
             self.assertIn(('note', press[0] & 15, press[1]), forwarded, package)
 

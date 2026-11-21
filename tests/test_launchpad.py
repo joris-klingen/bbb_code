@@ -54,10 +54,11 @@ class Device(unittest.TestCase):
         s, _, _, sent = rig('DRUMS')
         s.start()
         self.assertEqual(sent[0], (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x0E, 0x01, 0xF7))
-        self.assertEqual(sent[1][:8], (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x03, 0x03))
+        self.assertEqual(sent[1], (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x08, 0x7F, 0xF7))   # brightness
+        self.assertEqual(sent[2][:8], (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x03, 0x03))
         self.assertEqual(len(leds(sent)), 80)               # 64 pads and 16 round buttons
         s.start()                                           # plugged in again: everything once more
-        self.assertEqual(sent[3], sent[1])
+        self.assertEqual(sent[5], sent[2])
         s.stop()
         self.assertTrue(all(c == lp.OFF for c in leds(sent).values()))
         self.assertEqual(sent[-1], (0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x0E, 0x00, 0xF7))
@@ -87,13 +88,20 @@ class Parts(unittest.TestCase):
         s, _, song, sent = parts_rig(PARTS, [0xFF0000, 0x00FF00, 0x804000, 0x000000] + [0x0000FF] * 6)
         song.current_song_time = 20.0                       # in 'verse 1'
         s.refresh()
-        now = leds(sent)
+        now, D = leds(sent), lp.PART_DIM
         self.assertEqual([now[p] for p in lp.PART_PADS[:4]],
-                         [(26, 0, 0), (0, 127, 0), (26, 13, 0), (26, 26, 26)])     # hue kept, black = grey
-        self.assertEqual(now[lp.PART_PADS[9]], (0, 0, 26))
+                         [(D, 0, 0), (0, 127, 0), (D, int(round(D * 0.5 ** lp.LED_GAMMA)), 0), (D, D, D)])   # black = grey
+        self.assertEqual(now[lp.PART_PADS[9]], (0, 0, D))
         self.assertEqual([now[p] for p in lp.PART_PADS[10:]], [lp.OFF] * 14)
         self.assertEqual((now[lp.LEFT], now[lp.RIGHT], now[lp.UP], now[lp.DOWN]),
                          (lp.WHITE_DIM, lp.WHITE_DIM, lp.OFF, lp.OFF))
+
+    def test_a_screen_color_is_corrected_for_the_leds(self):
+        red = 0xFF3636                                      # a red as Live has it: some green and blue in it
+        self.assertEqual(lp.part_color(red, 'chorus', True), (127, 3, 3))       # red on the pad, not pink
+        self.assertEqual(lp.part_color(red, 'chorus', False), (lp.PART_DIM, 1, 1))
+        self.assertEqual(lp.part_color(0xFFFFFF, 'x', True), (127, 127, 127))
+        self.assertEqual(lp.part_color(0x00FF00, 'x', True), (0, 127, 0))
 
     def test_a_press_goes_to_the_part(self):
         s, _, song, _ = parts_rig()
@@ -103,9 +111,26 @@ class Parts(unittest.TestCase):
         self.assertEqual(song.current_song_time, 144.0)
         press(s, lp.PART_PADS[10])                          # no part there
         self.assertEqual(song.current_song_time, 144.0)
+
+    def test_while_playing_a_part_waits_for_the_bar_line_and_blinks(self):
+        s, _, song, sent = parts_rig(colors=[0xFF0000] * len(PARTS))
         song.is_playing, song.current_song_time = True, 21.5
-        press(s, lp.PART_PADS[3])                           # chorus at 48: the bar before, same beat
-        self.assertEqual(song.current_song_time, 45.5)
+        press(s, lp.PART_PADS[3])                           # chorus, at 48
+        seen = set()
+        for beat in (21.8, 22.4, 23.0, 23.6, 23.8):         # Live calls; the song plays on
+            song.current_song_time = beat
+            s.now += 0.05
+            s.tick()
+            s.refresh()
+            seen.add(leds(sent)[lp.PART_PADS[3]])
+        self.assertEqual(song.current_song_time, 23.8)      # still waiting
+        self.assertEqual(seen, {(127, 0, 0), lp.OFF})       # blinking
+        song.current_song_time = 23.95
+        s.now += 0.02
+        s.tick()                                            # the last call before the line at 24
+        s.refresh()
+        self.assertEqual(round(song.current_song_time, 6), 47.95)
+        self.assertEqual(leds(sent)[lp.PART_PADS[3]], (lp.PART_DIM, 0, 0))      # and it stops blinking
 
     def test_previous_and_next_part(self):
         s, _, song, _ = parts_rig()
@@ -141,23 +166,45 @@ class Parts(unittest.TestCase):
         song.cue_points = [xl.Locator('chorus', 32.0), xl.Locator('Verse1', 0.0), xl.Locator('bridge', 64.0)]
         s.refresh()
         now = leds(sent)
-        self.assertEqual([now[p] for p in lp.PART_PADS[:3]], [(0, 127, 0), (26, 6, 0), (16, 9, 26)])
+        dim = lambda rgb: tuple(int(round(lp.PART_DIM * (x / float(max(rgb))) ** lp.LED_GAMMA)) for x in rgb)
+        self.assertEqual([now[p] for p in lp.PART_PADS[:3]],
+                         [(0, 127, 0), dim(lp.KIND_COLORS['chorus']), dim(lp.KIND_COLORS[None])])
 
 
 class Transport(unittest.TestCase):
-    def test_play_stop_record(self):
+    def test_play_pauses_and_goes_on_stop_starts_over(self):
         s, _, song, sent = rig('DRUMS')
         s.refresh()
         self.assertEqual((leds(sent)[lp.PLAY], leds(sent)[lp.STOP], leds(sent)[lp.RECORD]),
                          (lp.GREEN_DIM, lp.WHITE_DIM, lp.RED_DIM))
+        counts = lambda: (song.is_playing, song.started, getattr(song, 'continued', 0))
+        press(s, lp.PLAY)                                   # from where the playhead is
+        self.assertEqual((counts(), leds(sent)[lp.PLAY]), ((True, 0, 1), lp.GREEN))
+        press(s, lp.PLAY)                                   # pause
+        self.assertEqual((counts(), leds(sent)[lp.PLAY]), ((False, 0, 1), lp.GREEN_DIM))
+        press(s, lp.PLAY)                                   # and on from there
+        self.assertEqual(counts(), (True, 0, 2))
+        press(s, lp.STOP)
+        press(s, lp.PLAY)                                   # after Stop: from the start marker
+        self.assertEqual(counts(), (True, 1, 2))
         press(s, lp.PLAY)
-        press(s, lp.PLAY)                                   # already playing: nothing
-        self.assertEqual((song.is_playing, song.started, leds(sent)[lp.PLAY]), (True, 1, lp.GREEN))
+        press(s, lp.PLAY)                                   # a pause after that goes on again
+        self.assertEqual(counts(), (True, 1, 3))
+
+    def test_a_part_chosen_after_stop_is_where_play_starts(self):
+        s, t, song, _ = rig('Parts', 'DRUMS')
+        t['Parts'].arrangement_clips = [xl.Clip('intro', 0.0), xl.Clip('verse', 16.0)]
+        press(s, lp.STOP)
+        press(s, lp.PART_PADS[1])
+        press(s, lp.PLAY)
+        self.assertEqual((song.current_song_time, song.started, song.continued), (16.0, 0, 1))
+
+    def test_record(self):
+        s, _, song, sent = rig('DRUMS')
         press(s, lp.RECORD)
         self.assertEqual((song.record_mode, leds(sent)[lp.RECORD]), (True, lp.RED))
-        press(s, lp.STOP)
         press(s, lp.RECORD)
-        self.assertEqual((song.is_playing, song.record_mode), (False, False))
+        self.assertEqual((song.record_mode, leds(sent)[lp.RECORD]), (False, lp.RED_DIM))
 
     def test_punch_loop_and_click(self):
         s, _, song, sent = rig('DRUMS')
@@ -172,6 +219,7 @@ class Transport(unittest.TestCase):
 class GroupRows(unittest.TestCase):
     def test_solo_and_mute_with_their_clear_buttons(self):
         s, t, song, sent = rig('DRUMS', 'PERC', 'BASS', 'fx')
+        t['fx'].is_foldable = True                          # a group
         s.refresh()
         now = leds(sent)
         self.assertEqual(([now[p] for p in lp.SOLO_PADS[:3]], [now[p] for p in lp.MUTE_PADS[:3]]),
@@ -184,10 +232,14 @@ class GroupRows(unittest.TestCase):
         self.assertEqual((now[lp.SOLO_PADS[0]], now[lp.MUTE_PADS[0]], now[lp.MUTE_PADS[1]], now[lp.MUTE_PADS[5]]),
                          (lp.BLUE, lp.MUTE_ON, lp.MUTE_SILENCED, lp.OFF))
         self.assertEqual((now[lp.UNSOLO], now[lp.UNMUTE]), (lp.BLUE, lp.AMBER))
-        song.return_tracks[0].mute = True
+        kick = xl.Track('kick', group_track=t['DRUMS'])
+        song.tracks.append(kick)
+        kick.mute = song.return_tracks[0].mute = True       # not groups: unmute all leaves them
         press(s, lp.UNSOLO)
         press(s, lp.UNMUTE)
-        self.assertFalse(any(x.solo or x.mute for x in song.tracks + song.return_tracks))
+        self.assertFalse(any(x.solo for x in song.tracks + song.return_tracks))
+        self.assertFalse(any(t[n].mute for n in ['DRUMS', 'PERC', 'BASS', 'fx']))
+        self.assertTrue(kick.mute and song.return_tracks[0].mute)
         self.assertEqual((leds(sent)[lp.UNSOLO], leds(sent)[lp.UNMUTE]), (lp.OFF, lp.OFF))
 
     def test_activity_green_with_the_signal_red_when_armed(self):
@@ -215,7 +267,9 @@ class GroupRows(unittest.TestCase):
         self.assertEqual(leds(sent)[lp.ARM], lp.RED)
         play('KEYS', 0.50, 0.56)
         self.assertEqual(pads()[2], (127, 0, 0))
-        play('KEYS', 0.52)
+        play('KEYS', 0.53)                                  # halfway down: well under half as bright
+        self.assertTrue(lp.ARMED_LOW < pads()[2][0] < 75)
+        play('KEYS', 0.50)
         self.assertEqual(pads()[2], (lp.ARMED_LOW, 0, 0))
         press(s, lp.ARM)                                    # disarm all
         self.assertEqual((vox.arm, pads()[2], leds(sent)[lp.ARM]), (False, (0, lp.ACTIVITY_LOW, 0), lp.OFF))

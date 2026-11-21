@@ -126,6 +126,7 @@ class Surface(groups.Groups):
                 setattr(song, what, not getattr(song, what))
         else:
             return
+        self.tick()
         self.refresh()
 
     def fader(self, col, value):
@@ -231,10 +232,12 @@ class Surface(groups.Groups):
                 continue
             on, dim = PART_COLORS.get(spec.part_kind(parts[index][0]), PART_OTHER)
             leds[led] = on if index == playing else dim
+            if index == self.waiting_part():     # waits for the bar line
+                leds[led] = on if self.blink() else OFF
         return leds
 
     def refresh(self):
-        """Send the lights that changed. Called after every press and ten times a second."""
+        """Send the lights that changed. Called after every press and as often as Live allows."""
         changed = [(k, v) for k, v in sorted(self.colors().items()) if self.leds.get(k) != v]
         if changed:
             self.leds.update(changed)
