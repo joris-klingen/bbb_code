@@ -1,6 +1,6 @@
 # Launchpad Mini for mixing: plan
 
-A second controller script next to the Launch Control XL one (see README), for moving around a
+A second controller script next to the Launch Control XL one (see docs/controllers.md), for moving around a
 set while mixing: go to song parts, solo and mute groups, see what plays and what is armed,
 transport. Volumes and sends stay on the Mac. Agreed with Joris on 20-21 Nov 2026.
 

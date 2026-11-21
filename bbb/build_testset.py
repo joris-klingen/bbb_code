@@ -1,4 +1,4 @@
-"""Build a small set to try the Launch Control XL script on (see README, Launch Control XL).
+"""Build a small set to try the Launch Control XL script on (see docs/controllers.md).
 
 Usage: python3 -m bbb.build_testset <BBB template.als> [out.als]
 
