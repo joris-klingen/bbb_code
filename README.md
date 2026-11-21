@@ -15,6 +15,11 @@ solo hotkeys and (later) take-lane cleanup. Python 3.9+, standard library only.
   Control XL and a Launchpad Mini (see below). `bbb/groups.py` is what they share,
   `bbb/remote_script.py` the part Live loads; `python3 -m bbb.install_remote` puts both in
   Live's User Library.
+- `bbb/stock.py` — a version of a set that needs nothing but Live: third-party plugins replaced
+  by built-in devices (settings carried over where they can be read), take lanes and unused
+  tracks removed. `python3 -m bbb.stock song.als --write` writes
+  `song <next version> (ableton only).als`. It changes the sound on purpose; a first version,
+  see `PLAN-stock.md`.
 - `tests/` — `python3 -m unittest discover -s tests -t .` Runs on small synthetic sets built in
   `tests/fixture.py`; real sets stay out of the repo.
 - `bbb/build_template.py` — one-off generator of the first template (now maintained by hand in
