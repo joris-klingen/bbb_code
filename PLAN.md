@@ -1,7 +1,6 @@
 # BBB songbook: plan
 
-The full plan with the diagram is at a private page (private to
-Joris). This is the short version to work from in this repo.
+The short version of the plan, to work from in this repo.
 
 **Idea.** One record per song (parts, lyrics, chords, key, tempo, its Live projects). BoothCue, the
 Google Drive sheets, the band's phones and the restyle of Live sets are views of that record.

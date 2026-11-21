@@ -124,3 +124,7 @@ plus the cases the script has to cope with. What to look for is at the top of
 
 The app looks for projects three folders above `bbb/` (the Bovenburen folder); set `BBB_ROOT` to
 point it somewhere else. It only answers its own page on localhost, not other websites.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

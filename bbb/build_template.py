@@ -3,7 +3,7 @@
 Usage: python3 -m bbb.build_template <base.als> <vocal_source.als> <out_dir>
 
   base.als          project whose tracks, returns and plugins are reused (Charlotte studio)
-  vocal_source.als  project whose Vox Verse / Vox Chorus chains are copied (my song)
+  vocal_source.als  project whose Vox Verse / Vox Chorus chains are copied
 
 Writes <out_dir>/BBB template.als with the core groups. This was the starting point; the
 template in 'BBB template Project' is maintained by hand in Live since.

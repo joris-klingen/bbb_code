@@ -2,7 +2,7 @@
 
 `bbb/stock.py` makes a version of a Live set that needs nothing but Live: third-party plugins
 replaced by built-in devices, take lanes and unused tracks removed. Light, loads anywhere,
-sounds roughly the same. Never the mix itself. First tried on "my song 3.6"
+sounds roughly the same. Never the mix itself. First tried on one real project
 (21 Nov 2026): 277 plugin instances of 32 kinds, 11.4 MB to 2.9 MB, opens in Live 12.4.6.
 
     python3 -m bbb.stock song.als            report only
