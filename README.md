@@ -40,7 +40,9 @@ Never write over a source `.als`; output always goes to a new file.
 
 Eight columns, one per solo key in `spec.py`: 1 DRUMS (+ PERC), 2 BASS, 3 KEYS (+ PIANO),
 4 SYNTHS (+ STRINGS), 5 GUIT, 6 GUIT ACC, 7 VOX LEAD, 8 BACKINGS. Groups are found by name
-(aliases included) among the top-level tracks, so it works in any set, restyled or not.
+among the top-level tracks, so it works in any set, restyled or not: the names and aliases
+restyle knows, and beyond those by the words in a name (`Vocals`, `vocs lead`, `BVs`,
+`Gtr acoustic`). The words are in `spec.py` (`WORDS`, and `PART_WORDS` for song parts).
 
 - **Fader**: volume of the column's first group. It does nothing until it reaches the volume in
   the set, so the mix never jumps; Live's status bar says which way to move.
@@ -60,7 +62,8 @@ Eight columns, one per solo key in `spec.py`: 1 DRUMS (+ PERC), 2 BASS, 3 KEYS (
 - **Down** (right side): both button rows show the parts of the song instead of solo and mute
   (lit while they do), top row parts 1-8, bottom row 9-16. Parts are the clips on the `Parts`
   track, or the locators when there is none: verse green, chorus red, intro / outro yellow,
-  the rest amber, bright where the song is. A press goes to that part. While playing, the
+  the rest amber, bright where the song is (`Verse2`, `last chorus`, `refrein` count too; a
+  `pre-chorus` is not a chorus). A press goes to that part. While playing, the
   playhead goes to the same beat in the bar before the part, so the beat goes on and the part
   starts on the next bar line. **Up** shows the next sixteen parts (lit when there are more);
   the rows follow the song.

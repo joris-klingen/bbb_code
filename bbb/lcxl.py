@@ -50,7 +50,7 @@ UNSOLO_LED = 42
 OFF, GREEN_DIM, GREEN, YELLOW_DIM, YELLOW, AMBER, RED = 12, 28, 60, 29, 62, 63, 15
 AMBER_DIM, RED_DIM, LIME_DIM = 29, 13, 45
 
-# Parts on the bottom row: (playing, not playing) by the first word of the part's name.
+# Parts on the button rows: (playing, not playing) by the kind of part (spec.part_kind).
 PART_COLORS = {'verse': (GREEN, GREEN_DIM), 'chorus': (RED, RED_DIM),
                'intro': (YELLOW, LIME_DIM), 'outro': (YELLOW, LIME_DIM)}
 PART_OTHER = (AMBER, AMBER_DIM)                   # pre, post, bridge and anything else
@@ -94,11 +94,7 @@ COLUMNS = columns_spec()
 
 def group_name(track_name):
     """The spec group a track name stands for, or None."""
-    n = track_name.strip().lower()
-    for g in spec.GROUPS:
-        if n == g.name.lower() or n in g.aliases:
-            return g.name
-    return None
+    return spec.group_named(track_name)
 
 
 def db(param):
@@ -369,8 +365,7 @@ class Surface:
             if index >= len(parts):
                 leds[led] = OFF
                 continue
-            words = parts[index][0].lower().split()
-            on, dim = PART_COLORS.get(words[0] if words else '', PART_OTHER)
+            on, dim = PART_COLORS.get(spec.part_kind(parts[index][0]), PART_OTHER)
             leds[led] = on if index == playing else dim
         return leds
 

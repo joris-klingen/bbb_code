@@ -3,6 +3,7 @@
 Colors are indices into Live's 70-color palette (0-69), as stored in the .als XML.
 Solo keys are computer-keyboard mappings on the track's solo button (Mixer/HeadKeyMidi).
 """
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -105,3 +106,76 @@ def group_by_name(name):
         if g.name == name:
             return g
     raise KeyError(name)
+
+
+# --- looser naming, for the controllers --------------------------------------------------
+# Restyle only renames what it knows exactly (the aliases above). The controllers have to find
+# the groups and song parts in any set as it is, so they also go by the words in a name:
+# 'Vocals', 'vocs lead', 'BVs', 'Gtr acoustic', 'Verse2', 'last chorus', 'refrein'.
+
+# Words that mean the same, under the word used in WORD_GROUPS.
+WORDS = {
+    'drums':   ['drums', 'drum', 'drms', 'drm', 'kit', 'drumkit'],
+    'perc':    ['perc', 'percussion', 'percs'],
+    'bass':    ['bass', 'bas', 'basses'],
+    'keys':    ['keys', 'key', 'keyboard', 'keyboards', 'kbd', 'toetsen'],
+    'piano':   ['piano', 'pianos', 'pno'],
+    'synths':  ['synths', 'synth', 'syn', 'synthesizer', 'synthesizers', 'juno'],
+    'strings': ['strings', 'string', 'strijkers'],
+    'guit':    ['guit', 'guitar', 'guitars', 'guits', 'gtr', 'gtrs', 'git', 'gitaar', 'gitaren'],
+    'acc':     ['acc', 'acoustic', 'ac', 'akoestisch', 'akoestische'],
+    'vox':     ['vox', 'vocal', 'vocals', 'voc', 'vocs', 'voice', 'voices', 'zang', 'stem'],
+    'lead':    ['lead', 'main', 'ld'],
+    'back':    ['back', 'backs', 'backing', 'backings', 'bv', 'bvs', 'bgv', 'bgvs', 'bvox',
+                'choir', 'koor', 'koortjes'],
+}
+# Words that say nothing about which group it is.
+FILLER = ['group', 'grp', 'bus', 'all', 'total', 'sum', 'mix', 'the', 'live', 'el', 'electric',
+          'rhythm', 'rythm']
+# The words of a name (in any order, without filler) -> group.
+WORD_GROUPS = {
+    ('drums',): 'DRUMS', ('perc',): 'PERC', ('bass',): 'BASS', ('keys',): 'KEYS',
+    ('piano',): 'PIANO', ('synths',): 'SYNTHS', ('strings',): 'STRINGS',
+    ('guit',): 'GUIT', ('acc', 'guit'): 'GUIT ACC',
+    ('vox',): 'VOX LEAD', ('lead', 'vox'): 'VOX LEAD',
+    ('back',): 'BACKINGS', ('back', 'vox'): 'BACKINGS',
+}
+_WORD = {variant: word for word, variants in WORDS.items() for variant in variants}
+
+# Kinds of song parts (the controllers color by kind). A part with one of PART_BEFORE in its
+# name is none of these: a pre-chorus is not a chorus.
+PART_WORDS = {
+    'verse':  ['verse', 'verses', 'vers', 'vrs', 'v', 'couplet', 'strofe'],
+    'chorus': ['chorus', 'choruses', 'chor', 'chrs', 'c', 'refrein', 'ref', 'refrain', 'hook'],
+    'intro':  ['intro', 'in', 'start', 'opening'],
+    'outro':  ['outro', 'out', 'end', 'ending', 'einde', 'slot'],
+}
+PART_BEFORE = ['pre', 'post', 'prechorus', 'postchorus']
+_PART = {variant: kind for kind, variants in PART_WORDS.items() for variant in variants}
+
+
+def _words(name):
+    return re.findall(r'[a-z]+', name.lower())      # 'Verse2', 'pre-chorus', 'BVs (new)'
+
+
+def group_named(name):
+    """The name of the group a track name stands for, or None: exactly (name or alias), else by
+    its words when every word is known and together they mean one group."""
+    n = name.strip().lower()
+    if n in [x.lower() for x in IGNORE_GROUPS]:
+        return None
+    for g in GROUPS:
+        if n == g.name.lower() or n in g.aliases:
+            return g.name
+    words = [w for w in _words(name) if w not in FILLER]
+    if not words or any(w not in _WORD for w in words):
+        return None
+    return WORD_GROUPS.get(tuple(sorted({_WORD[w] for w in words})))
+
+
+def part_kind(name):
+    """'verse', 'chorus', 'intro' or 'outro' for the name of a song part, or None."""
+    words = _words(name)
+    if any(w in PART_BEFORE for w in words):
+        return None
+    return next((_PART[w] for w in words if w in _PART), None)

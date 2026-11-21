@@ -81,6 +81,42 @@ class Columns(unittest.TestCase):
         self.assertEqual([x.name for x in cols[6]], ['Vocals'])
 
 
+class Names(unittest.TestCase):
+    def test_groups_by_their_words(self):
+        for name, group in [
+            ('Vocals', 'VOX LEAD'), ('vocs', 'VOX LEAD'), ('Lead Vox', 'VOX LEAD'), ('VOX 2', 'VOX LEAD'),
+            ('zang', 'VOX LEAD'), ('Vocals group', 'VOX LEAD'),
+            ('BVs', 'BACKINGS'), ('backing vocals', 'BACKINGS'), ('Vox - Back', 'BACKINGS'), ('koor', 'BACKINGS'),
+            ('Drum Kit', 'DRUMS'), ('DRUMS BUS', 'DRUMS'), ('drums live', 'DRUMS'), ('Percussion', 'PERC'),
+            ('Bas', 'BASS'), ('Keyboards', 'KEYS'), ('Pno', 'PIANO'), ('Synth', 'SYNTHS'), ('juno', 'SYNTHS'),
+            ('Gtr', 'GUIT'), ('Electric Guitars', 'GUIT'), ('guitar rythm', 'GUIT'),
+            ('Acoustic Gtr', 'GUIT ACC'), ('gitaar akoestisch', 'GUIT ACC'),
+        ]:
+            self.assertEqual(lcxl.group_name(name), group, name)
+
+    def test_not_a_group(self):
+        for name in ['bass synth', 'vox fx', 'lead', 'acoustic', 'Parts', 'length', 'live rig',
+                     'drums room', 'group', '', '12', 'guitar solo']:
+            self.assertIsNone(lcxl.group_name(name), name)
+
+    def test_kinds_of_parts(self):
+        from bbb import spec
+        for name, kind in [
+            ('verse', 'verse'), ('Verse2', 'verse'), ('VERSE 1a', 'verse'), ('v3', 'verse'), ('couplet 2', 'verse'),
+            ('chorus', 'chorus'), ('last chorus', 'chorus'), ('Chorus (double)', 'chorus'), ('refrein', 'chorus'),
+            ('hook', 'chorus'), ('C2', 'chorus'),
+            ('intro', 'intro'), ('Intro 2', 'intro'), ('outro', 'outro'), ('ending', 'outro'),
+            ('pre', None), ('pre-chorus', None), ('Pre Chorus 2', None), ('post chorus', None),
+            ('bridge', None), ('solo', None), ('break', None), ('', None),
+        ]:
+            self.assertEqual(spec.part_kind(name), kind, name)
+
+    def test_restyle_still_only_knows_the_exact_names(self):
+        from bbb import restyle
+        self.assertIsNone(restyle._group('vocs'))
+        self.assertEqual(restyle._group('vocals').name, 'VOX LEAD')
+
+
 class Buttons(unittest.TestCase):
     def test_solo_takes_the_family_and_adds_up(self):
         s, t, _, _, _ = rig('DRUMS', 'PERC', 'BASS')
