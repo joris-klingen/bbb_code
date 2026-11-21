@@ -1,25 +1,26 @@
-"""The part Live loads: installed as `Remote Scripts/BBB_Groups/__init__.py` by
-`python3 -m bbb.install_remote`, next to copies of `lcxl.py` and `spec.py`.
+"""The part Live loads, the same for every controller: `python3 -m bbb.install_remote` installs it
+as `Remote Scripts/<name>/__init__.py`, next to `device.py` (which controller this is: `lcxl.py`
+or `launchpad.py`), `groups.py` and `spec.py`.
 
-Everything the controls do is in `lcxl.py`; this only passes MIDI in and out.
+Everything the controls do is in those; this only passes MIDI in and out.
 """
 import time
 
 import Live
 from _Framework.ControlSurface import ControlSurface
 
-from . import lcxl
+from . import device
 
 
 class BBBGroups(ControlSurface):
 
     def __init__(self, c_instance):
         super().__init__(c_instance)
-        self._surface = lcxl.Surface(self.song, self._to_device, self.show_message)
-        self.log_message('BBB Groups: %s' % ' | '.join('+'.join(c) for c in lcxl.COLUMNS))
+        self._surface = device.Surface(self.song, self._to_device, self.show_message)
         self._ticks, self._lit = 0, 0.0
-        self.show_message('BBB Groups: Launch Control XL on %s' % lcxl.TEMPLATE_NAME)
-        self._safely(self._surface.refresh)
+        self.log_message(device.NAME)
+        self.show_message(device.NAME)
+        self._safely(self._surface.start)
 
     def _to_device(self, data):
         self._c_instance.send_midi(tuple(data))
@@ -28,16 +29,15 @@ class BBBGroups(ControlSurface):
         try:
             do(*args)
         except Exception as e:      # a set in an odd state must not take the script down
-            self.log_message('BBB Groups: %r' % (e,))
+            self.log_message('%s: %r' % (device.NAME, e))
 
     def build_midi_map(self, midi_map_handle):
         super().build_midi_map(midi_map_handle)
         script = self._c_instance.handle()
-        for cc in lcxl.FADER_CCS + lcxl.AMB_CCS:
-            Live.MidiMap.forward_midi_cc(script, midi_map_handle, lcxl.CHANNEL, cc)
-        buttons = [lcxl.UNSOLO_NOTE, lcxl.PARTS_NOTE, lcxl.UP_NOTE, lcxl.ARM_NOTE] + list(lcxl.SONG_NOTES)
-        for note in lcxl.SOLO_NOTES + lcxl.MUTE_NOTES + buttons:
-            Live.MidiMap.forward_midi_note(script, midi_map_handle, lcxl.CHANNEL, note)
+        for channel, cc in device.FORWARD_CCS:
+            Live.MidiMap.forward_midi_cc(script, midi_map_handle, channel, cc)
+        for channel, note in device.FORWARD_NOTES:
+            Live.MidiMap.forward_midi_note(script, midi_map_handle, channel, note)
 
     def receive_midi(self, midi_bytes):
         self._safely(self._surface.receive, midi_bytes)
@@ -46,16 +46,21 @@ class BBBGroups(ControlSurface):
         for midi_bytes in midi_chunk:
             self.receive_midi(midi_bytes)
 
+    def refresh_state(self):
+        """Live calls this when the device may have been away (ports changed, plugged in)."""
+        super().refresh_state()
+        self._safely(self._surface.start)
+
     def update_display(self):
         super().update_display()
-        self._safely(self._surface.refresh)     # ten times a second: solo / mute done in Live
+        self._safely(self._surface.refresh)     # ten times a second: what was done in Live
         self._ticks += 1
         if self._ticks % 10 == 1:
             self._safely(self._watch_meters)
 
     def _watch_meters(self):
-        """Have Live tell when the level of a group changes, so the meter lights can move faster
-        than ten times a second."""
+        """Have Live tell when the level of a group changes, so the activity lights can move
+        faster than ten times a second."""
         for column in self._surface.columns():
             for t in column:
                 if not t.output_meter_level_has_listener(self._meter_moved):
@@ -74,7 +79,7 @@ class BBBGroups(ControlSurface):
 
     def disconnect(self):
         self._safely(self._unwatch_meters)
-        self._safely(self._surface.lights_off)
+        self._safely(self._surface.stop)
         super().disconnect()
 
 

@@ -2,8 +2,11 @@
 
 A second controller script next to the Launch Control XL one (see README), for moving around a
 set while mixing: go to song parts, solo and mute groups, see what plays and what is armed,
-transport. Volumes and sends stay on the Mac. Agreed with Joris on 20-21 Nov 2026; nothing of
-this is built yet.
+transport. Volumes and sends stay on the Mac. Agreed with Joris on 20-21 Nov 2026.
+
+**Status (21 Nov 2026):** built as `bbb/launchpad.py` on the shared `bbb/groups.py`, with tests
+on fakes, and installed with the XL script. Not yet tried on the device: see "To check on the
+way" below, all still open.
 
 The Launchpad Mini MK3 is used for this only (the lights have their own).
 

@@ -1,13 +1,14 @@
 """Launch Control XL on the common groups: what every control does, without Live.
 
-Eight columns, one per solo key in spec.GROUPS (1 DRUMS + PERC ... 8 BACKINGS). Per column:
-fader = volume, top knob = send to the amb return, top button = solo, bottom button = mute, the
-three knob lights = level meter. On the right: Solo clears every solo in the set, Device = loop,
-Mute = click, Left / Right = punch in / out, Record Arm = disarm every track (again: arm them
-again). Down switches both button rows to the parts of the song (the clips on the Parts track;
-top row 1-8, bottom row 9-16): a press goes to that part, Up shows the next sixteen. Colors: yellow = solo, green = you hear it
-(dim: silenced by a solo elsewhere), red = muted, dark = the set has no such group. Groups are found by name (the same names and aliases restyle knows), among the
-top-level tracks, so this works in any Bovenburen set.
+Eight columns, the groups of groups.py (1 DRUMS + PERC ... 6 all the rest ... 8 BACKINGS). Per
+column: fader = volume, top knob = send to the amb return, top button = solo, bottom button =
+mute, the three knob lights = activity. On the right: Solo clears every solo in the set,
+Device = loop, Mute = click, Left / Right = punch in / out, Record Arm = disarm every track
+(again: arm them again). Down switches both button rows to the parts of the song (top row 1-8,
+bottom row 9-16): a press goes to that part, Up shows the next sixteen.
+
+Colors: yellow = solo, green = you hear it (dim: silenced by a solo elsewhere), red = muted,
+dark = the set has no such group.
 
 The device has to be on User template 8 (hold User, press 8), loaded with
 `templates/Novation LCXL/bbb_groups_for_user_8.syx`: the device's standard layout on channel 8,
@@ -19,9 +20,12 @@ fakes; `remote_script.py` is the part that Live loads.
 import time
 
 try:
-    from . import spec
+    from . import groups, spec
 except ImportError:      # pragma: no cover - only when loaded outside a package
+    import groups
     import spec
+COLUMNS, group_name = groups.COLUMNS, groups.group_name
+NAME = 'BBB Groups: Launch Control XL'
 
 TEMPLATE = 7             # sysex template number: user 0-7, factory 8-15
 TEMPLATE_NAME = '%s template %d' % (('User', TEMPLATE + 1) if TEMPLATE < 8 else ('Factory', TEMPLATE - 7))
@@ -55,21 +59,9 @@ PART_COLORS = {'verse': (GREEN, GREEN_DIM), 'chorus': (RED, RED_DIM),
                'intro': (YELLOW, LIME_DIM), 'outro': (YELLOW, LIME_DIM)}
 PART_OTHER = (AMBER, AMBER_DIM)                   # pre, post, bridge and anything else
 
-# Meter on the three knob lights, to see what is playing rather than how loud. Live's meter
-# (0-1) moves only a little between the hits of a group, so the lights show where the level is
-# between the lowest and the highest of the last moments: three at the top of that swing, one
-# at the bottom. They dance to the music whatever the level of the group.
-METER_FLOOR = 0.02       # below this: silence, no lights
+# Activity on the three knob lights (groups.Groups.activity): three at the top of the swing.
 METER_STEPS = (0.35, 0.7)    # part of the swing from which the middle / the top light is on
-METER_FALL = 0.2         # how fast the remembered high comes down, per second
-METER_RISE = 0.4         # how fast the remembered low comes up, per second
-METER_STEADY = 0.02      # a swing smaller than this is a steady sound: two lights
-METER_LOUD = 0.9         # from here the top light is amber
-# Live's meter takes seconds to come down after the sound has gone. With the song stopped that
-# is all there is to see, so then the lights only stay on while the level still goes up now and
-# then (someone playing along), and go out at once otherwise.
-METER_RISE_STEP = 0.005  # the level going up by this much counts as sound coming in
-METER_HOLD = 0.25        # seconds the lights stay on after that, with the song stopped
+METER_LOUD = 0.9         # from this level the top light is amber
 HINT_SECONDS = 2.0       # how long 'move the fader up / down' stays on the knob lights
 
 SYSEX = (0xF0, 0x00, 0x20, 0x29, 0x02, 0x11)
@@ -80,23 +72,6 @@ JUMP = 6                 # a fader sends every step (measured: 1 at a time); mor
                          # not the fader (another template with the same numbers) and is ignored
 
 
-def columns_spec():
-    """Group names per column, the family's core group first: [['DRUMS', 'PERC'], ['BASS'], ...]"""
-    cols = [[] for _ in FADER_CCS]
-    for g in spec.GROUPS:
-        if g.solo and g.solo.isdigit() and 1 <= int(g.solo) <= len(cols):
-            cols[int(g.solo) - 1].append(g)
-    return [[g.name for g in sorted(c, key=lambda g: g.optional)] for c in cols]
-
-
-COLUMNS = columns_spec()
-
-
-def group_name(track_name):
-    """The spec group a track name stands for, or None."""
-    return spec.group_named(track_name)
-
-
 def db(param):
     try:
         return param.str_for_value(param.value)
@@ -104,35 +79,15 @@ def db(param):
         return ''
 
 
-class Surface:
-    """`song` is called for the current song; `send` takes a tuple of MIDI bytes."""
+class Surface(groups.Groups):
 
     def __init__(self, song, send, message=lambda text: None, clock=time.monotonic):
-        self.song, self.send, self.message, self.clock = song, send, message, clock
+        super().__init__(song, send, message, clock)
         self.leds = {}                       # led number -> color last sent
         new = lambda: dict(hw=None, set=None, told=False, hint=None, until=0)
         self.faders = [new() for _ in FADER_CCS]
         self.knobs = [new() for _ in AMB_CCS]
         self.parts_mode, self.page, self.playing_part = False, 0, None
-        self.disarmed = []                   # the tracks Record Arm switched off last
-        self.swing, self.swing_at = [None] * len(FADER_CCS), None      # (low, high) per column
-        self.levels = [dict(last=0.0, rose=None) for _ in FADER_CCS]
-
-    # --- finding the groups ---
-
-    def columns(self):
-        """Per column the top-level tracks of its groups, the core group first."""
-        found = {}
-        for t in self.song().tracks:
-            if t.group_track is None:
-                name = group_name(t.name)
-                if name:
-                    found.setdefault(name, []).append(t)
-        return [[t for name in names for t in found.get(name, [])] for names in COLUMNS]
-
-    def everything(self):
-        song = self.song()
-        return list(song.tracks) + list(song.return_tracks)
 
     # --- from the device ---
 
@@ -172,73 +127,6 @@ class Surface:
         else:
             return
         self.refresh()
-
-    def toggle(self, col, what):
-        """Solo: on unless one of the family already is. Mute: on unless all of them already are."""
-        tracks = self.columns()[col]
-        if not tracks:
-            return
-        if what == 'solo':
-            new = not any(t.solo for t in tracks)
-        else:
-            new = not all(t.mute for t in tracks)
-        for t in tracks:
-            setattr(t, what, new)
-
-    def unsolo_all(self):
-        for t in self.everything():
-            if t.solo:
-                t.solo = False
-
-    def armed(self):
-        return [t for t in self.song().tracks if getattr(t, 'can_be_armed', False) and t.arm]
-
-    def arm_button(self):
-        """Tracks armed: disarm them all. None armed: arm the ones this button disarmed last."""
-        armed = self.armed()
-        if armed:
-            self.disarmed = armed
-            for t in armed:
-                t.arm = False
-            return
-        still_there = list(self.song().tracks)
-        for t in self.disarmed:
-            if t in still_there and t.can_be_armed:
-                t.arm = True
-
-    # --- parts of the song ---
-
-    def parts(self):
-        """(name, start in beats) of every part, in song order: the arrangement clips of the
-        top-level track called Parts, or the locators when there is no such track."""
-        song = self.song()
-        for t in song.tracks:
-            if t.group_track is None and t.name.strip().lower() == 'parts':
-                found = [(c.name, c.start_time) for c in getattr(t, 'arrangement_clips', [])]
-                break
-        else:
-            found = [(c.name, c.time) for c in getattr(song, 'cue_points', [])]
-        return sorted(found, key=lambda part: part[1])
-
-    def part_now(self, parts):
-        """Index of the part the playhead is in, or None before the first one."""
-        now = self.song().current_song_time
-        inside = [i for i, (_, start) in enumerate(parts) if start <= now]
-        return inside[-1] if inside else None
-
-    def go_to_part(self, index):
-        """Stopped: put the playhead on the start of the part. Playing: go to the same place in
-        the bar before the part, so the beat goes on and the part starts on the next bar line."""
-        parts, song = self.parts(), self.song()
-        if index >= len(parts):
-            return
-        start = parts[index][1]
-        if not song.is_playing:
-            song.current_song_time = start
-            return
-        bar = song.signature_numerator * 4.0 / song.signature_denominator
-        this_bar = int(song.current_song_time // bar) * bar
-        song.jump_by(max(start - bar, start % bar) - this_bar)
 
     def fader(self, col, value):
         """Volume of the column's first group."""
@@ -285,25 +173,11 @@ class Surface:
 
     # --- to the device ---
 
-    def heard(self):
-        """The top-level tracks a solo lets through (themselves or something inside them soloed),
-        or None when nothing is soloed."""
-        soloed = [t for t in self.everything() if t.solo]
-        if not soloed:
-            return None
-        tops = []
-        for t in soloed:
-            while getattr(t, 'group_track', None) is not None:
-                t = t.group_track
-            tops.append(t)
-        return tops
-
     def colors(self):
         leds, heard, now = {}, self.heard(), self.clock()
-        passed = 0.0 if self.swing_at is None else max(0.0, now - self.swing_at)
-        self.swing_at = now
-        stopped = not getattr(self.song(), 'is_playing', True)
-        for i, tracks in enumerate(self.columns()):
+        columns = self.columns()
+        activity = self.activity(columns)
+        for i, tracks in enumerate(columns):
             knobs = [row[i] for row in KNOB_LEDS]
             for k in knobs:
                 leds[k] = OFF
@@ -321,19 +195,9 @@ class Surface:
             if f:                                    # top light: move up, low light: move down
                 leds[knobs[0] if f['hint'] == 'up' else knobs[2]] = RED
                 continue
-            level = max(getattr(t, 'output_meter_level', 0) for t in tracks)
-            seen = self.levels[i]
-            if level > seen['last'] + METER_RISE_STEP:
-                seen['rose'] = now
-            seen['last'] = level
-            fading = stopped and (seen['rose'] is None or now - seen['rose'] > METER_HOLD)
-            if level < METER_FLOOR or fading:
-                self.swing[i] = None
+            if activity[i] is None:
                 continue
-            low, high = self.swing[i] or (level, level)
-            low, high = min(level, low + METER_RISE * passed), max(level, high - METER_FALL * passed)
-            self.swing[i] = (low, high)
-            where = 0.5 if high - low < METER_STEADY else (level - low) / (high - low)
+            where, level = activity[i]
             leds[knobs[2]] = GREEN
             if where >= METER_STEPS[0]:
                 leds[knobs[1]] = GREEN
@@ -376,8 +240,22 @@ class Surface:
             self.leds.update(changed)
             self.send(SYSEX + (SET_LEDS, TEMPLATE) + tuple(b for kv in changed for b in kv) + (0xF7,))
 
+    def start(self):
+        """Nothing to set up on the device: light it."""
+        self.leds = {}
+        self.refresh()
+
+    def stop(self):
+        self.lights_off()
+
     def lights_off(self):
         self.send(SYSEX + (SET_LEDS, TEMPLATE)
                   + tuple(b for k in sum(KNOB_LEDS, []) + SOLO_LEDS + MUTE_LEDS + [UNSOLO_LED] + sorted(SONG_LEDS.values()) + [PARTS_LED, UP_LED, ARM_LED]
                         for b in (k, OFF)) + (0xF7,))
         self.leds = {}
+
+
+# What Live has to pass on to the script: (channel, number).
+FORWARD_CCS = [(CHANNEL, cc) for cc in FADER_CCS + AMB_CCS]
+FORWARD_NOTES = [(CHANNEL, note) for note in SOLO_NOTES + MUTE_NOTES
+                 + [UNSOLO_NOTE, PARTS_NOTE, UP_NOTE, ARM_NOTE] + list(SONG_NOTES)]

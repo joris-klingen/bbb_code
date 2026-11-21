@@ -38,9 +38,16 @@ class Song:
         self.loop = self.metronome = self.punch_in = self.punch_out = False
         self.is_playing, self.current_song_time, self.cue_points = False, 0.0, []
         self.signature_numerator, self.signature_denominator = 4, 4
+        self.record_mode, self.started = False, 0
 
     def jump_by(self, beats):
         self.current_song_time += beats
+
+    def start_playing(self):
+        self.is_playing, self.started = True, self.started + 1
+
+    def stop_playing(self):
+        self.is_playing = False
 
 
 def rig(*names):
@@ -69,8 +76,20 @@ def leds(sent):
 class Columns(unittest.TestCase):
     def test_columns_follow_the_solo_keys(self):
         self.assertEqual(lcxl.COLUMNS, [['DRUMS', 'PERC'], ['BASS'], ['KEYS', 'PIANO'],
-                                        ['SYNTHS', 'STRINGS'], ['GUIT'], ['GUIT ACC'],
+                                        ['SYNTHS'], ['GUIT'], ['GUIT ACC', 'STRINGS'],
                                         ['VOX LEAD'], ['BACKINGS']])
+
+    def test_column_six_is_all_the_rest(self):
+        s, t, song, _, _ = rig('length', 'Parts', 'FX', 'DRUMS', 'strings', 'bass synth', 'acc guitar',
+                               'ARCHIVE', 'old', 'live rig')
+        song.tracks.append(Track('vox fx', group_track=t['DRUMS']))     # inside a group: not top level
+        cols = s.columns()
+        self.assertEqual([x.name for x in cols[5]], ['acc guitar', 'strings', 'FX', 'bass synth'])
+        self.assertEqual([[x.name for x in c] for c in cols[:5] + cols[6:]],
+                         [['DRUMS'], [], [], [], [], [], []])
+        press(s, lcxl.SOLO_NOTES[5])
+        self.assertTrue(all(t[n].solo for n in ['acc guitar', 'strings', 'FX', 'bass synth']))
+        self.assertFalse(t['ARCHIVE'].solo or t['Parts'].solo or t['live rig'].solo or t['old'].solo)
 
     def test_groups_by_name_and_alias_top_level_only(self):
         s, t, song, _, _ = rig('drums live', 'PERC', 'Vocals', 'length')
@@ -254,7 +273,7 @@ class SongButtons(unittest.TestCase):
 
 class Clip:
     def __init__(self, name, start_time):
-        self.name, self.start_time = name, start_time
+        self.name, self.start_time, self.color = name, start_time, 0x808080
 
 
 class Locator:
@@ -490,12 +509,36 @@ class Template(unittest.TestCase):
 class Install(unittest.TestCase):
     def test_install_copies_a_loadable_package(self):
         with tempfile.TemporaryDirectory() as d:
-            target = install_remote.install(os.path.join(d, 'BBB_Groups'))
-            self.assertEqual(sorted(os.listdir(target)), ['__init__.py', 'lcxl.py', 'spec.py'])
-            with open(os.path.join(target, '__init__.py')) as f:
-                source = f.read()
-            self.assertIn('def create_instance', source)
-            compile(source, '__init__.py', 'exec')      # Live cannot load a script with a syntax error
+            xl, pad = install_remote.install(d)
+            self.assertEqual(sorted(os.listdir(d)), ['BBB_Groups', 'BBB_Launchpad'])
+            self.assertEqual(sorted(os.listdir(xl)), ['__init__.py', 'device.py', 'groups.py', 'lcxl.py', 'spec.py'])
+            self.assertEqual(sorted(os.listdir(pad)),
+                             ['__init__.py', 'device.py', 'groups.py', 'launchpad.py', 'spec.py'])
+            for folder in (xl, pad):
+                for name in os.listdir(folder):     # Live cannot load a script with a syntax error
+                    with open(os.path.join(folder, name)) as f:
+                        compile(f.read(), name, 'exec')
+            with open(os.path.join(xl, '__init__.py')) as f:
+                self.assertIn('def create_instance', f.read())
+
+    def test_the_installed_packages_load_without_live(self):
+        """All but __init__.py, which needs Live: device.py and what it imports."""
+        import importlib
+        import sys
+        with tempfile.TemporaryDirectory() as d:
+            for folder in install_remote.install(d):
+                os.remove(os.path.join(folder, '__init__.py'))
+                open(os.path.join(folder, '__init__.py'), 'w').close()
+            sys.path.insert(0, d)
+            try:
+                for package in ('BBB_Groups', 'BBB_Launchpad'):
+                    device = importlib.import_module(package + '.device')
+                    self.assertTrue(device.NAME and device.FORWARD_NOTES and device.FORWARD_CCS)
+                    self.assertTrue(callable(device.Surface))
+            finally:
+                sys.path.remove(d)
+                for name in [m for m in sys.modules if m.split('.')[0] in ('BBB_Groups', 'BBB_Launchpad')]:
+                    del sys.modules[name]
 
 
 if __name__ == '__main__':

@@ -1,26 +1,38 @@
-"""Install the Launch Control XL script for Live: `python3 -m bbb.install_remote`
+"""Install the controller scripts for Live: `python3 -m bbb.install_remote`
 
-Copies `remote_script.py` (as `__init__.py`), `lcxl.py` and `spec.py` to
-`~/Music/Ableton/User Library/Remote Scripts/BBB_Groups`. Run it again after changing the groups
-in `spec.py`; Live reads the script when it starts.
+Writes two folders in `~/Music/Ableton/User Library/Remote Scripts`: `BBB_Groups` (Launch Control
+XL) and `BBB_Launchpad` (Launchpad Mini MK3). Each gets `remote_script.py` (as `__init__.py`),
+its own controller module, `groups.py`, `spec.py`, and a `device.py` that says which controller
+it is. Run it again after changing the groups in `spec.py`; Live reads the scripts when it starts.
 """
 import os
 import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TARGET = os.path.expanduser('~/Music/Ableton/User Library/Remote Scripts/BBB_Groups')
-FILES = [('remote_script.py', '__init__.py'), ('lcxl.py', 'lcxl.py'), ('spec.py', 'spec.py')]
+SCRIPTS = os.path.expanduser('~/Music/Ableton/User Library/Remote Scripts')
+CONTROLLERS = {'BBB_Groups': 'lcxl', 'BBB_Launchpad': 'launchpad'}      # folder -> module
 
 
-def install(target=TARGET):
-    os.makedirs(target, exist_ok=True)
-    for src, dst in FILES:
-        shutil.copyfile(os.path.join(HERE, src), os.path.join(target, dst))
-    return target
+def install(scripts=SCRIPTS):
+    """Returns the folders written."""
+    targets = []
+    for folder, module in CONTROLLERS.items():
+        target = os.path.join(scripts, folder)
+        os.makedirs(target, exist_ok=True)
+        shutil.copyfile(os.path.join(HERE, 'remote_script.py'), os.path.join(target, '__init__.py'))
+        for name in (module, 'groups', 'spec'):
+            shutil.copyfile(os.path.join(HERE, name + '.py'), os.path.join(target, name + '.py'))
+        with open(os.path.join(target, 'device.py'), 'w') as f:
+            f.write('"""Which controller this script is for (written by bbb.install_remote)."""\n'
+                    'from .%s import FORWARD_CCS, FORWARD_NOTES, NAME, Surface  # noqa: F401\n' % module)
+        targets.append(target)
+    return targets
 
 
 if __name__ == '__main__':
-    print('Installed in', install(*sys.argv[1:2]))
-    print('Restart Live, then Settings > Link, Tempo & MIDI > Control Surface: BBB Groups,')
-    print('Input and Output: Launch Control XL. On the device: hold User, press 8.')
+    for target in install(*sys.argv[1:2]):
+        print('Installed in', target)
+    print('Restart Live, then Settings > Link, Tempo & MIDI > Control Surface:')
+    print('  BBB Groups     Input and Output: Launch Control XL (on the device: hold User, press 8)')
+    print('  BBB Launchpad  Input and Output: Launchpad Mini MK3 (LPMiniMK3 MIDI), not its DAW port')
