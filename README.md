@@ -1,8 +1,8 @@
 # bbb_code
 
 Tools for managing Ableton Live projects, built for and with the band
-[Bovenburen](https://bovenburen.com). This is where they are developed: small, readable Python
-that works on real sets and stays out of the way of the music.
+[Bovenburen](https://bovenburen.com); bbb is short for Bovenburen band. This is where they are
+developed: small, readable Python that works on real sets and stays out of the way of the music.
 
 Python 3.9+, standard library only. Nothing to install.
 
