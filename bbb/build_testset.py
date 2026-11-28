@@ -1,18 +1,16 @@
-"""Build a small set to try the Launch Control XL script on (see docs/controllers.md).
+"""Build a small set to try the Launchpad script on (see docs/controllers.md).
 
 Usage: python3 -m bbb.build_testset <BBB template.als> [out.als]
 
 Made from the template, without plugins so it opens at once, with what the script has to cope with:
 
-  column 1  DRUMS + PERC          a family of two: solo / mute take both, the fader only DRUMS
+  column 1  DRUMS + PERC          a family of two: solo / mute take both
   column 3  KEYS + PIANO          same
   column 6  (no GUIT ACC)         no lights, the controls do nothing
   column 8  'vox backing'         a group found by an alias instead of its name
   'bass' inside DRUMS             not top level: must not react to column 2
   'fx' at top level, 'kick'       not a known group / inside a group: solo them in Live and
-  inside DRUMS                    the Solo button on the right lights up and clears both
-
-The group volumes differ (see VOLUMES), to see that a fader only takes over where the volume is.
+  inside DRUMS                    the unsolo button on the right lights up and clears both
 """
 import os
 import sys
@@ -20,7 +18,7 @@ import sys
 from . import als
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'testsets',
-                   'BBB LCXL test Project', 'BBB LCXL test.als')
+                   'BBB controller test Project', 'BBB controller test.als')
 VOLUMES = {'DRUMS': 0, 'PERC': -12, 'BASS': -6, 'KEYS': -18, 'PIANO': -3, 'SYNTHS': -30,
            'GUIT': -9, 'VOX LEAD': 0, 'vox backing': -24}       # dB
 

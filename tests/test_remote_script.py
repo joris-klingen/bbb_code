@@ -1,5 +1,5 @@
-"""The part Live loads, run against a stand-in for Live: both installed scripts start, map their
-controls, take MIDI, refresh and stop without an error."""
+"""The part Live loads, run against a stand-in for Live: the installed script starts, maps its
+controls, takes MIDI, refreshes and stops without an error."""
 import importlib
 import os
 import sys
@@ -7,7 +7,7 @@ import tempfile
 import types
 import unittest
 
-import tests.test_lcxl as xl
+from tests import fakes as fake_live
 from bbb import install_remote
 
 
@@ -75,7 +75,7 @@ def stand_in_for_live(song, forwarded, logged):
     return {'Live': live, '_Framework': framework, '_Framework.ControlSurface': control_surface}
 
 
-class Track(xl.Track):
+class Track(fake_live.Track):
     """With the listeners Live's tracks have."""
     def __init__(self, name):
         super().__init__(name)
@@ -92,10 +92,10 @@ class Track(xl.Track):
 
 
 class RemoteScript(unittest.TestCase):
-    def test_both_scripts_run(self):
-        for package, press in [('BBB_Groups', (0x97, 41, 127)), ('BBB_Launchpad', (0x90, 21, 127))]:
+    def test_the_script_runs(self):
+        for package, press in [('BBB_Launchpad', (0x90, 21, 127))]:
             drums = Track('DRUMS')
-            song = xl.Song([drums, Track('Parts')], [Track('A-amb')])
+            song = fake_live.Song([drums, Track('Parts')], [Track('A-amb')])
             sent, forwarded, logged = [], [], []
             fakes = stand_in_for_live(song, forwarded, logged)
             with tempfile.TemporaryDirectory() as d:

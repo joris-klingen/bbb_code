@@ -1,6 +1,6 @@
 """The part Live loads, the same for every controller: `python3 -m bbb.install_remote` installs it
-as `Remote Scripts/<name>/__init__.py`, next to `device.py` (which controller this is: `lcxl.py`
-or `launchpad.py`), `groups.py` and `spec.py`.
+as `Remote Scripts/<name>/__init__.py`, next to `device.py` (which controller this is:
+`launchpad.py`), `groups.py` and `spec.py`.
 
 Everything the controls do is in those; this only passes MIDI in and out.
 """

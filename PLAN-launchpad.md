@@ -8,6 +8,10 @@ transport. Volumes and sends stay on the Mac. Agreed with Joris on 20-21 Nov 202
 on fakes, and installed with the XL script. Not yet tried on the device: see "To check on the
 way" below, all still open.
 
+**28 Nov 2026:** in use on the device. The Launch Control XL script is gone (Joris switched to
+the Launchpad only), so where this plan speaks of the XL it is history; its shared logic lives
+on in `bbb/groups.py`, its tests in `tests/test_groups.py`.
+
 The Launchpad Mini MK3 is used for this only (the lights have their own).
 
 ## Layout

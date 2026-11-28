@@ -1,6 +1,6 @@
 """What the controller scripts share: the groups and song parts of a set, and what can be done
-with them. Without Live and without a device: `lcxl.py` and `launchpad.py` put this on their
-controls and lights, the tests run it on fakes.
+with them. Without Live and without a device: `launchpad.py` puts this on its pads and
+lights, the tests run it on fakes.
 
 Groups are the top-level tracks whose name stands for a group of spec.GROUPS (spec.group_named),
 in eight columns by solo key: 1 DRUMS + PERC ... 8 BACKINGS. Column 6 is all the rest: GUIT ACC,

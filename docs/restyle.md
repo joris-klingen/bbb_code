@@ -38,9 +38,9 @@ point it somewhere else. It only answers its own page on localhost, not other we
   differences with the template, pick categories, write a new version.
 - `bbb/facts.py` — read only: what a set is, as JSON (tempo, time signature, song parts from the
   `parts` track, locators, tracks with their plugins, audio files). `python3 -m bbb.facts song.als`
-- `bbb/lcxl.py`, `bbb/launchpad.py` — two controllers on the common groups in Live: a Launch
-  Control XL and a Launchpad Mini (see below). `bbb/groups.py` is what they share,
-  `bbb/remote_script.py` the part Live loads; `python3 -m bbb.install_remote` puts both in
+- `bbb/launchpad.py` — a Launchpad Mini on the common groups in Live (see
+  [controllers.md](controllers.md)). `bbb/groups.py` is the groups and parts logic,
+  `bbb/remote_script.py` the part Live loads; `python3 -m bbb.install_remote` puts it in
   Live's User Library.
 - `bbb/stock.py` — a version of a set that needs nothing but Live: third-party plugins replaced
   by built-in devices (settings carried over where they can be read), take lanes and unused

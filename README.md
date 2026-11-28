@@ -11,7 +11,7 @@ Python 3.9+, standard library only. Nothing to install.
 | | |
 |---|---|
 | **Restyle** | One convention for every set: group and track names, order, colors, solo keys, returns. As a local web app or from the command line. A set is only written if it still sounds the same. → [docs/restyle.md](docs/restyle.md) |
-| **Controllers** | A Launch Control XL and a Launchpad Mini that find your groups and song parts by name in any set: solo, mute, jump to a part on the bar line, see what plays and what is armed. → [docs/controllers.md](docs/controllers.md) |
+| **Controller** | A Launchpad Mini that finds your groups and song parts by name in any set: solo, mute, jump to a part on the bar line, see what plays and what is armed. → [docs/controllers.md](docs/controllers.md) |
 | **Facts** | What a set is, as plain data: tempo, song parts, tracks, plugins, audio files. `python3 -m bbb.facts song.als` |
 | **Ableton only** | A light version of a set that needs nothing but Live: third-party plugins replaced by built-in devices. A first version. → [PLAN-stock.md](PLAN-stock.md) |
 

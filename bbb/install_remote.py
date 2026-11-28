@@ -1,9 +1,9 @@
 """Install the controller scripts for Live: `python3 -m bbb.install_remote`
 
-Writes two folders in `~/Music/Ableton/User Library/Remote Scripts`: `BBB_Groups` (Launch Control
-XL) and `BBB_Launchpad` (Launchpad Mini MK3). Each gets `remote_script.py` (as `__init__.py`),
-its own controller module, `groups.py`, `spec.py`, and a `device.py` that says which controller
-it is. Run it again after changing the groups in `spec.py`; Live reads the scripts when it starts.
+Writes the folder `BBB_Launchpad` (Launchpad Mini MK3) in `~/Music/Ableton/User Library/Remote
+Scripts`: `remote_script.py` (as `__init__.py`), `launchpad.py`, `groups.py`, `spec.py`, and a
+`device.py` that says which controller it is. Run it again after changing the groups in
+`spec.py`; Live reads the scripts when it starts.
 """
 import os
 import shutil
@@ -11,7 +11,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.expanduser('~/Music/Ableton/User Library/Remote Scripts')
-CONTROLLERS = {'BBB_Groups': 'lcxl', 'BBB_Launchpad': 'launchpad'}      # folder -> module
+CONTROLLERS = {'BBB_Launchpad': 'launchpad'}      # folder -> module
 
 
 def install(scripts=SCRIPTS):
@@ -34,5 +34,4 @@ if __name__ == '__main__':
     for target in install(*sys.argv[1:2]):
         print('Installed in', target)
     print('Restart Live, then Settings > Link, Tempo & MIDI > Control Surface:')
-    print('  BBB Groups     Input and Output: Launch Control XL (on the device: hold User, press 8)')
     print('  BBB Launchpad  Input and Output: Launchpad Mini MK3 (LPMiniMK3 DAW)')

@@ -1,14 +1,14 @@
 import unittest
 
-import tests.test_lcxl as xl                    # the fake song, tracks and clips
+from tests import fakes
 from bbb import launchpad as lp
 
-PARTS = xl.PARTS
+PARTS = fakes.PARTS
 
 
 def rig(*names):
-    tracks = {n: xl.Track(n) for n in names}
-    song = xl.Song(list(tracks.values()), [xl.Track('A-verb'), xl.Track('B-amb')])
+    tracks = {n: fakes.Track(n) for n in names}
+    song = fakes.Song(list(tracks.values()), [fakes.Track('A-verb'), fakes.Track('B-amb')])
     sent = []
     s = lp.Surface(lambda: song, sent.append, clock=lambda: s.now)
     s.now = 0.0
@@ -18,7 +18,7 @@ def rig(*names):
 def parts_rig(names=PARTS, colors=None):
     """A set with a Parts track: every part 4 bars of 4/4, so part i starts at beat 16 i."""
     s, t, song, sent = rig('Parts', 'DRUMS', 'BASS')
-    clips = [xl.Clip(n, i * 16.0) for i, n in enumerate(names)]
+    clips = [fakes.Clip(n, i * 16.0) for i, n in enumerate(names)]
     for clip, color in zip(clips, colors or [0x00FF00] * len(clips)):
         clip.color = color
     t['Parts'].arrangement_clips = clips[::-1]
@@ -163,7 +163,7 @@ class Parts(unittest.TestCase):
 
     def test_locators_get_the_color_of_their_kind(self):
         s, _, song, sent = rig('DRUMS')
-        song.cue_points = [xl.Locator('chorus', 32.0), xl.Locator('Verse1', 0.0), xl.Locator('bridge', 64.0)]
+        song.cue_points = [fakes.Locator('chorus', 32.0), fakes.Locator('Verse1', 0.0), fakes.Locator('bridge', 64.0)]
         s.refresh()
         now = leds(sent)
         dim = lambda rgb: tuple(int(round(lp.PART_DIM * (x / float(max(rgb))) ** lp.LED_GAMMA)) for x in rgb)
@@ -192,7 +192,7 @@ class Transport(unittest.TestCase):
 
     def test_a_part_chosen_while_stopped_is_where_play_starts(self):
         s, t, song, _ = rig('Parts', 'DRUMS')
-        t['Parts'].arrangement_clips = [xl.Clip('intro', 0.0), xl.Clip('verse', 16.0)]
+        t['Parts'].arrangement_clips = [fakes.Clip('intro', 0.0), fakes.Clip('verse', 16.0)]
         press(s, lp.PART_PADS[1])
         press(s, lp.PLAY)
         self.assertEqual((song.current_song_time, song.started, song.continued), (16.0, 0, 1))
@@ -250,7 +250,7 @@ class GroupRows(unittest.TestCase):
         self.assertEqual((now[lp.SOLO_PADS[0]], now[lp.MUTE_PADS[0]], now[lp.MUTE_PADS[1]], now[lp.MUTE_PADS[5]]),
                          (lp.BLUE, lp.MUTE_ON, lp.MUTE_SILENCED, lp.OFF))
         self.assertEqual((now[lp.UNSOLO], now[lp.UNMUTE]), (lp.BLUE, lp.AMBER))
-        kick = xl.Track('kick', group_track=t['DRUMS'])
+        kick = fakes.Track('kick', group_track=t['DRUMS'])
         song.tracks.append(kick)
         kick.mute = song.return_tracks[0].mute = True       # not groups: unmute all leaves them
         press(s, lp.UNSOLO)
@@ -267,7 +267,7 @@ class GroupRows(unittest.TestCase):
 
     def test_activity_green_with_the_signal_red_when_armed(self):
         s, t, song, sent = rig('DRUMS', 'BASS', 'KEYS')
-        vox = xl.Track('rec', group_track=t['KEYS'])
+        vox = fakes.Track('rec', group_track=t['KEYS'])
         song.tracks.append(vox)
         song.is_playing = True
         pads = lambda: [leds(sent)[p] for p in lp.ACTIVITY_PADS[:4]]
