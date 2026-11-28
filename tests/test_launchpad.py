@@ -47,7 +47,7 @@ class Device(unittest.TestCase):
     def test_pad_numbers(self):
         self.assertEqual((lp.pad(1, 1), lp.pad(1, 8), lp.pad(8, 1), lp.pad(8, 8)), (81, 88, 11, 18))
         self.assertEqual((lp.CLICK, lp.ARM, lp.UNSOLO, lp.UNMUTE), (59, 39, 29, 19))
-        self.assertEqual((lp.PLAY, lp.STOP, lp.RECORD), (51, 52, 54))
+        self.assertEqual((lp.PLAY, lp.CONTINUE, lp.RECORD), (51, 52, 54))
         self.assertEqual(lp.SONG_PADS, {56: 'punch_in', 57: 'loop', 58: 'punch_out'})
 
     def test_start_takes_the_device_and_stop_gives_it_back(self):
@@ -172,32 +172,50 @@ class Parts(unittest.TestCase):
 
 
 class Transport(unittest.TestCase):
-    def test_play_pauses_and_goes_on_stop_starts_over(self):
+    def test_play_starts_where_it_started_the_next_pad_from_the_cursor(self):
         s, _, song, sent = rig('DRUMS')
         s.refresh()
-        self.assertEqual((leds(sent)[lp.PLAY], leds(sent)[lp.STOP], leds(sent)[lp.RECORD]),
-                         (lp.GREEN_DIM, lp.WHITE_DIM, lp.RED_DIM))
+        self.assertEqual((leds(sent)[lp.PLAY], leds(sent)[lp.CONTINUE], leds(sent)[lp.RECORD]),
+                         (lp.GREEN_DIM, lp.GREEN_DIM, lp.RED_DIM))
         counts = lambda: (song.is_playing, song.started, getattr(song, 'continued', 0))
-        press(s, lp.PLAY)                                   # from where the playhead is
-        self.assertEqual((counts(), leds(sent)[lp.PLAY]), ((True, 0, 1), lp.GREEN))
-        press(s, lp.PLAY)                                   # pause
-        self.assertEqual((counts(), leds(sent)[lp.PLAY]), ((False, 0, 1), lp.GREEN_DIM))
-        press(s, lp.PLAY)                                   # and on from there
-        self.assertEqual(counts(), (True, 0, 2))
-        press(s, lp.STOP)
-        press(s, lp.PLAY)                                   # after Stop: from the start marker
-        self.assertEqual(counts(), (True, 1, 2))
+        press(s, lp.PLAY)                                   # as the space bar
+        self.assertEqual((counts(), leds(sent)[lp.PLAY], leds(sent)[lp.CONTINUE]),
+                         ((True, 1, 0), lp.GREEN, lp.GREEN))
+        press(s, lp.PLAY)                                   # stop
+        self.assertEqual((counts(), leds(sent)[lp.PLAY]), ((False, 1, 0), lp.GREEN_DIM))
+        press(s, lp.CONTINUE)                               # as shift + space
+        self.assertEqual(counts(), (True, 1, 1))
+        press(s, lp.CONTINUE)                               # stops too
+        self.assertEqual(counts(), (False, 1, 1))
         press(s, lp.PLAY)
-        press(s, lp.PLAY)                                   # a pause after that goes on again
-        self.assertEqual(counts(), (True, 1, 3))
+        self.assertEqual(counts(), (True, 2, 1))
 
-    def test_a_part_chosen_after_stop_is_where_play_starts(self):
+    def test_a_part_chosen_while_stopped_is_where_play_starts(self):
         s, t, song, _ = rig('Parts', 'DRUMS')
         t['Parts'].arrangement_clips = [xl.Clip('intro', 0.0), xl.Clip('verse', 16.0)]
-        press(s, lp.STOP)
         press(s, lp.PART_PADS[1])
         press(s, lp.PLAY)
         self.assertEqual((song.current_song_time, song.started, song.continued), (16.0, 0, 1))
+        press(s, lp.PLAY)
+        press(s, lp.PLAY)                                   # after that: as the space bar again
+        self.assertEqual((song.started, song.continued), (1, 1))
+
+    def test_the_preview_pad_is_left_to_a_midi_mapping(self):
+        s, _, song, sent = rig('DRUMS')
+        s.refresh()
+        self.assertEqual(lp.PREVIEW, 47)
+        self.assertEqual(leds(sent)[lp.PREVIEW], lp.BLUE_DIM)   # no length track: just where it is
+        self.assertNotIn((0, lp.PREVIEW), lp.FORWARD_NOTES)
+        self.assertEqual(len(lp.FORWARD_NOTES), 63)
+
+    def test_the_preview_pad_shows_the_length_track_mapped_with_it(self):
+        s, t, song, sent = rig('length', 'DRUMS')
+        s.refresh()
+        self.assertEqual(leds(sent)[lp.PREVIEW], lp.BLUE_DIM)
+        t['length'].mute = True                             # the same press as the preview switch
+        s.refresh()
+        self.assertEqual(leds(sent)[lp.PREVIEW], lp.BLUE)
+        self.assertEqual(s.columns()[5], [])                # and no group: unmute all leaves it
 
     def test_record(self):
         s, _, song, sent = rig('DRUMS')
@@ -241,6 +259,11 @@ class GroupRows(unittest.TestCase):
         self.assertFalse(any(t[n].mute for n in ['DRUMS', 'PERC', 'BASS', 'fx']))
         self.assertTrue(kick.mute and song.return_tracks[0].mute)
         self.assertEqual((leds(sent)[lp.UNSOLO], leds(sent)[lp.UNMUTE]), (lp.OFF, lp.OFF))
+        press(s, lp.UNSOLO)                                 # again: back as it was
+        press(s, lp.UNMUTE)
+        self.assertEqual([x.name for x in song.tracks + song.return_tracks if x.solo], ['DRUMS', 'PERC'])
+        self.assertEqual([x.name for x in song.tracks + song.return_tracks if x.mute], ['fx', 'kick', 'A-verb'])
+        self.assertEqual((leds(sent)[lp.UNSOLO], leds(sent)[lp.UNMUTE]), (lp.BLUE, lp.AMBER))
 
     def test_activity_green_with_the_signal_red_when_armed(self):
         s, t, song, sent = rig('DRUMS', 'BASS', 'KEYS')

@@ -35,4 +35,4 @@ if __name__ == '__main__':
         print('Installed in', target)
     print('Restart Live, then Settings > Link, Tempo & MIDI > Control Surface:')
     print('  BBB Groups     Input and Output: Launch Control XL (on the device: hold User, press 8)')
-    print('  BBB Launchpad  Input and Output: Launchpad Mini MK3 (LPMiniMK3 MIDI), not its DAW port')
+    print('  BBB Launchpad  Input and Output: Launchpad Mini MK3 (LPMiniMK3 DAW)')

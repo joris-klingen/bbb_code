@@ -20,8 +20,8 @@ top buttons    .    .   [<]  [>]   .    .    .    .          previous / next par
 row 1  parts   1    2    3    4    5    6    7    8      .
 row 2  parts   9   10   11   12   13   14   15   16      .
 row 3          (empty; parts 17-24 in a long song)       .
-row 4         play stop  .   rec   .   in  loop out      click
-row 5          (empty)                                   .
+row 4         play cont  .   rec   .   in  loop out      click
+row 5          .    .    .    .    .    .  prev  .       .
 row 6  activity per group                                disarm all / arm again
 row 7  solo per group                                    unsolo all
 row 8  mute per group                                    unmute all
@@ -31,9 +31,12 @@ row 8  mute per group                                    unmute all
   when there is no such track: by kind of part, `spec.part_kind`). The part that plays at full
   brightness, the rest dimmed. A press goes to the part; while playing at the next bar line, the pad
   blinking until then. More than 16 parts go on into row 3; more than 24: the top buttons page.
-- **Row 3 and row 5** stay empty, to keep parts, transport and groups apart for the eye.
-- **Transport** (row 4): play / pause (green while playing; goes on where it was) and stop (the next play starts
-  over, as the space bar) at the left; a gap;
+- **Row 3 and row 5** stay empty, to keep parts, transport and groups apart for the eye; only
+  below loop sits the MIDI editor's preview switch (bright blue = on, read from the `length` track's Activator mapped to the same pad). It is not in Live's API, so the
+  script does not take that pad and it is mapped in Live's MIDI Map mode instead.
+- **Transport** (row 4): play (from where it last started, as the space bar; from the part
+  just chosen) and play from the cursor (as shift + space) at the left, both green while
+  playing and both stopping it then; a gap;
   record (Live's arrangement record: dim red, bright while recording); a gap; punch in, loop,
   punch out in the order of Live's control bar, amber, dim when off.
 - **Activity** (row 6): one pad per group, its brightness following the signal within the
@@ -52,8 +55,8 @@ row 8  mute per group                                    unmute all
 - **Mute** (row 8): amber = on, dark = muted, as Live's track activator.
 - A group the set does not have: its column is dark in rows 6-8.
 - **Side buttons**: next to row 4 click; next to row 6 disarm all tracks / arm them again (red
-  while anything is armed); next to row 7 unsolo all (lit while anything is soloed); next to
-  row 8 unmute all groups (lit while a group is muted; tracks inside groups are left alone). The other four stay dark.
+  while anything is armed); next to row 7 unsolo all / solo them again (lit while anything is soloed); next to
+  row 8 unmute all groups / mute them again (lit while a group is muted; tracks inside groups are left alone). The other four stay dark.
 - **Top buttons**: the arrows left / right = previous / next part. The others are free.
 
 ## How

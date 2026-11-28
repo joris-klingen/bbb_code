@@ -74,6 +74,7 @@ class Groups:
     def __init__(self, song, send, message=lambda text: None, clock=time.monotonic):
         self.song, self.send, self.message, self.clock = song, send, message, clock
         self.disarmed = []                   # the tracks arm_button switched off last
+        self.unsoloed, self.unmuted = [], []     # and solo_button, mute_button
         self.swing, self.swing_at = [None] * len(COLUMNS), None        # (low, high) per column
         self.levels = [dict(last=0.0, rose=None) for _ in COLUMNS]
         self.waiting, self.ticked = None, None      # the part to go to at the next bar line
@@ -125,6 +126,30 @@ class Groups:
             for t in tracks:
                 if t.mute:
                     t.mute = False
+
+    def solo_button(self):
+        """Anything soloed: unsolo all. Nothing soloed: solo again what this button unsoloed last."""
+        soloed = [t for t in self.everything() if t.solo]
+        if soloed:
+            self.unsoloed = soloed
+            self.unsolo_all()
+            return
+        still_there = self.everything()
+        for t in self.unsoloed:
+            if t in still_there:
+                t.solo = True
+
+    def mute_button(self):
+        """A group muted: unmute all groups. None muted: mute again what this button unmuted last."""
+        muted = [t for tracks in self.columns() for t in tracks if t.mute]
+        if muted:
+            self.unmuted = muted
+            self.unmute_all()
+            return
+        still_there = [t for tracks in self.columns() for t in tracks]
+        for t in self.unmuted:
+            if t in still_there:
+                t.mute = True
 
     def heard(self):
         """The top-level tracks a solo lets through (themselves or something inside them soloed),

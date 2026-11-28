@@ -7,14 +7,21 @@ next to their row:
     row 1-2       the parts of the song, in the color of their clip; a press goes to the part
                   (while playing: at the next bar line, the pad blinks until then)
     row 3         empty (parts 17-24 in a long song)
-    row 4         play / pause, stop, -, record, -, punch in, loop, punch out  | click
-    row 5         empty
+    row 4         play, play from the cursor, -, record, -, punch in, loop, punch out | click
+    row 5         -, -, -, -, -, -, MIDI editor preview (mapped in Live, see below), -
     row 6         activity: green with the signal; red when a track in it is armed | disarm all / arm again
     row 7         solo (blue)                                                  | unsolo all
     row 8         mute (amber = on, dark = muted)                              | unmute all
 
-The device is put in Programmer mode (and given back when Live closes); it has to be connected
-through its MIDI port ("LPMiniMK3 MIDI"), not the DAW port. See PLAN-launchpad.md.
+The device is put in Programmer mode (and given back when Live closes); it is connected through
+its DAW port ("LPMiniMK3 DAW"), the one that works in use. See PLAN-launchpad.md.
+
+The preview switch of the MIDI note editor is not in Live's API, so the script leaves its pad
+alone (Live does not pass it on): map it to the switch in Live's MIDI Map mode, with Remote on
+for the Launchpad's input. The script cannot see the switch and Live sends no feedback for it,
+so the pad is also mapped to the Activator of the silent `length` track: one press flips both,
+and the script lights the pad by that track (off = preview on). Out of step: click the switch
+once with the mouse.
 
 This module only needs objects that look like Live's song and tracks, so the tests run it on
 fakes; `remote_script.py` is the part that Live loads.
@@ -43,8 +50,10 @@ def pad(row, col):
 
 COLS = range(1, 9)
 PART_PADS = [pad(row, col) for row in (1, 2, 3) for col in COLS]
-PLAY, STOP, RECORD = pad(4, 1), pad(4, 2), pad(4, 4)
+PLAY, CONTINUE, RECORD = pad(4, 1), pad(4, 2), pad(4, 4)
 SONG_PADS = {pad(4, 6): 'punch_in', pad(4, 7): 'loop', pad(4, 8): 'punch_out'}
+PREVIEW = pad(5, 7)              # below loop: for a MIDI mapping in Live, not for the script
+PREVIEW_TRACK = 'length'         # mapped to the same pad: its Activator shows the preview switch
 ACTIVITY_PADS = [pad(6, col) for col in COLS]
 SOLO_PADS = [pad(7, col) for col in COLS]
 MUTE_PADS = [pad(8, col) for col in COLS]
@@ -99,7 +108,7 @@ class Surface(groups.Groups):
         super().__init__(song, send, message, clock)
         self.leds = {}                       # light -> (r, g, b) last sent
         self.page, self.playing_part = 0, None
-        self.from_start = False              # after Stop: the next Play starts where Live starts
+        self.from_part = False               # a part was chosen: Play starts there
 
     # --- from the device ---
 
@@ -120,23 +129,20 @@ class Surface(groups.Groups):
     def pad(self, number):
         song = self.song()
         if number in PART_PADS:
-            self.from_start = False          # play from the part that was chosen
+            self.from_part = True
             self.go_to_part(self.page * len(PART_PADS) + PART_PADS.index(number))
         elif number in SOLO_PADS:
             self.toggle(SOLO_PADS.index(number), 'solo')
         elif number in MUTE_PADS:
             self.toggle(MUTE_PADS.index(number), 'mute')
-        elif number == PLAY:                 # pause and go on from there, as shift + space
+        elif number in (PLAY, CONTINUE):     # both stop while playing
             if song.is_playing:
                 song.stop_playing()
-            elif self.from_start:
-                song.start_playing()
+            elif number == CONTINUE or self.from_part:
+                song.continue_playing()      # from the cursor, as shift + space
             else:
-                song.continue_playing()
-            self.from_start = False
-        elif number == STOP:                 # as the space bar: the next Play starts from the
-            song.stop_playing()              # start marker again
-            self.from_start = True
+                song.start_playing()         # from where it last started, as the space bar
+            self.from_part = False
         elif number == RECORD:
             song.record_mode = not song.record_mode
         elif number in SONG_PADS:
@@ -150,14 +156,20 @@ class Surface(groups.Groups):
         elif number == ARM:
             self.arm_button()
         elif number == UNSOLO:
-            self.unsolo_all()
+            self.solo_button()
         elif number == UNMUTE:
-            self.unmute_all()
+            self.mute_button()
         elif number in (LEFT, RIGHT):
-            self.from_start = False
+            self.from_part = True
             self.step_part(1 if number == RIGHT else -1)
         elif number in (UP, DOWN):
             self.page = min(self.pages() - 1, max(0, self.page + (1 if number == DOWN else -1)))
+
+    def preview_track(self):
+        for t in self.song().tracks:
+            if t.group_track is None and t.name.strip().lower() == PREVIEW_TRACK:
+                return t
+        return None
 
     def pages(self):
         return max(1, -(-len(self.parts()) // len(PART_PADS)))
@@ -187,7 +199,7 @@ class Surface(groups.Groups):
         leds[DOWN] = WHITE_DIM if self.page + 1 < self.pages() else OFF
         # transport
         leds[PLAY] = GREEN if song.is_playing else GREEN_DIM
-        leds[STOP] = WHITE_DIM
+        leds[CONTINUE] = GREEN if song.is_playing else GREEN_DIM
         leds[RECORD] = RED if song.record_mode else RED_DIM
         for led, what in SONG_PADS.items():
             leds[led] = AMBER if getattr(song, what) else AMBER_DIM
@@ -213,6 +225,8 @@ class Surface(groups.Groups):
         leds[ARM] = RED if armed else OFF
         leds[UNSOLO] = BLUE if heard is not None else OFF
         leds[UNMUTE] = AMBER if any(t.mute for tracks in columns for t in tracks) else OFF
+        mirror = self.preview_track()
+        leds[PREVIEW] = BLUE if mirror is not None and mirror.mute else BLUE_DIM
         return leds
 
     def refresh(self):
@@ -237,5 +251,5 @@ class Surface(groups.Groups):
 
 
 # What Live has to pass on to the script: (channel, number).
-FORWARD_NOTES = [(0, pad(row, col)) for row in range(1, 9) for col in COLS]
+FORWARD_NOTES = [(0, pad(row, col)) for row in range(1, 9) for col in COLS if pad(row, col) != PREVIEW]
 FORWARD_CCS = [(0, pad(row, 9)) for row in range(1, 9)] + [(0, cc) for cc in range(91, 99)]
